@@ -1,0 +1,41 @@
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: unibot
+      POSTGRES_PASSWORD: unibot        # сменить на проде
+      POSTGRES_DB: unibot
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U unibot"]
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    volumes: ["redisdata:/data"]
+
+  api:
+    build: { context: ., dockerfile: Dockerfile.api }
+    restart: on-failure
+    env_file: .env
+    ports: ["127.0.0.1:8001:8000"]   # 8000 на хосте занят otclick; наружу идём через хостовый nginx
+    depends_on: { postgres: { condition: service_healthy } }
+
+  bot:
+    build: { context: ., dockerfile: Dockerfile.bot }
+    restart: on-failure
+    env_file: .env
+    depends_on: { postgres: { condition: service_healthy } }
+
+  worker:
+    build: { context: ., dockerfile: Dockerfile.worker }
+    restart: on-failure
+    env_file: .env
+    depends_on: { postgres: { condition: service_healthy } }
+
+volumes: { pgdata: {}, redisdata: {} }
+# nginx-контейнера НЕТ: на VPS уже работает хостовый nginx (80/443, проксирует
+# api.otclick.org → 127.0.0.1:8000). UniBot подключается server-блоком к нему.
