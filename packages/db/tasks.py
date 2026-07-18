@@ -107,6 +107,62 @@ async def update_progress(pool_or_conn, task_id, progress: dict) -> None:
     )
 
 
+async def get_active_task(pool: asyncpg.Pool, user_id) -> asyncpg.Record | None:
+    """Return the user's active (queued/running) lesson/course task, if any.
+
+    Mirrors the partial unique index ``idx_watch_tasks_one_active_per_user``:
+    only ``type IN ('lesson','course')`` counts as "active" for this lookup
+    (unlimited ``transcribe`` tasks are deliberately excluded, same as the
+    index). Used by ``GET /tasks/active`` for webapp polling.
+    """
+    return await pool.fetchrow(
+        """
+        SELECT * FROM watch_tasks
+        WHERE user_id = $1 AND status IN ('queued', 'running') AND type IN ('lesson', 'course')
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        user_id,
+    )
+
+
+async def get_task(pool: asyncpg.Pool, task_id) -> asyncpg.Record | None:
+    """Fetch a single task by id, or None if it doesn't exist."""
+    return await pool.fetchrow("SELECT * FROM watch_tasks WHERE id = $1", task_id)
+
+
+async def merge_progress(pool_or_conn, task_id, patch: dict) -> None:
+    """Shallow-merge ``patch`` into the task's existing ``progress`` jsonb.
+
+    Unlike ``update_progress`` (which replaces the whole column), this reads
+    the current progress and merges keys in Python before writing back, so
+    setting e.g. ``cancel_requested`` never clobbers fields the worker is
+    concurrently maintaining (``current``, ``total``, ``scores``, ...).
+
+    Not race-free against a concurrent writer (read-modify-write, no row
+    lock) — acceptable here because the only two writers are the worker
+    (owns ``current``/``total``/``scores`` almost exclusively during a run)
+    and this cancel endpoint (owns only ``cancel_requested``), and a lost
+    update would just mean a slightly stale progress snapshot, not a lost
+    cancel signal in the terminal-status sense.
+    """
+    row = await pool_or_conn.fetchrow(
+        "SELECT progress FROM watch_tasks WHERE id = $1", task_id
+    )
+    if row is None:
+        return
+    progress = row["progress"]
+    if isinstance(progress, str):
+        progress = json.loads(progress)
+    progress = dict(progress or {})
+    progress.update(patch)
+    await pool_or_conn.execute(
+        "UPDATE watch_tasks SET progress = $2::jsonb WHERE id = $1",
+        task_id,
+        json.dumps(progress),
+    )
+
+
 async def requeue_stale_running(pool: asyncpg.Pool) -> int:
     """Reset any ``running`` task back to ``queued``.
 
