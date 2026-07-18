@@ -70,8 +70,19 @@ async def claim_next(pool: asyncpg.Pool) -> asyncpg.Record | None:
             return await conn.fetchrow("SELECT * FROM watch_tasks WHERE id = $1", row["id"])
 
 
-async def finish(pool: asyncpg.Pool, task_id, status: str, error: str | None = None) -> None:
-    await pool.execute(
+async def finish(pool_or_conn, task_id, status: str, error: str | None = None) -> None:
+    """Mark a task done/failed/cancelled.
+
+    ``pool_or_conn`` accepts either an ``asyncpg.Pool`` or an
+    ``asyncpg.Connection`` (both expose ``.execute``), following the same
+    pattern as ``ledger.add_entry``. This lets the worker join this update
+    into the SAME transaction as the credit debit (``ledger.add_entry`` with
+    reason='watch') by passing its acquired connection, so a crash between
+    the two can never leave one committed without the other (which would
+    otherwise strand the task ``running`` for ``requeue_stale_running`` to
+    re-queue and re-charge on re-watch).
+    """
+    await pool_or_conn.execute(
         """
         UPDATE watch_tasks
         SET status = $2, error = $3, finished_at = now()
@@ -83,8 +94,13 @@ async def finish(pool: asyncpg.Pool, task_id, status: str, error: str | None = N
     )
 
 
-async def update_progress(pool: asyncpg.Pool, task_id, progress: dict) -> None:
-    await pool.execute(
+async def update_progress(pool_or_conn, task_id, progress: dict) -> None:
+    """Update a task's progress JSON.
+
+    ``pool_or_conn`` accepts either an ``asyncpg.Pool`` or an
+    ``asyncpg.Connection``, same pattern as ``finish``/``ledger.add_entry``.
+    """
+    await pool_or_conn.execute(
         "UPDATE watch_tasks SET progress = $2::jsonb WHERE id = $1",
         task_id,
         json.dumps(progress),

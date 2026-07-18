@@ -10,32 +10,42 @@ async def get_or_create_user(
     telegram_id: int,
     username: str | None,
     first_name: str | None,
-) -> asyncpg.Record:
-    """Return the existing user row for ``telegram_id``, creating it if absent.
+) -> tuple[asyncpg.Record, bool]:
+    """Return ``(user_row, was_created)`` for ``telegram_id``, creating it if absent.
 
-    Looks the user up first so existing rows are returned untouched (no
-    clobbering of a possibly-edited username), then falls back to an
-    ``INSERT ... ON CONFLICT DO NOTHING`` + re-select, which also handles a
-    concurrent create racing us. Callers that need to know whether this was
-    a brand-new user (e.g. to grant welcome credits) should check for that
-    themselves, e.g. by comparing ``created_at`` or checking the balance.
+    Signature: returns a 2-tuple, NOT a bare Record — ``(Record, bool)`` where
+    the bool is True iff this call is the one that created the row.
+
+    Tries the insert FIRST (``INSERT ... ON CONFLICT (telegram_id) DO NOTHING
+    RETURNING *``). If a row comes back, this call won the race and just
+    created the user -> ``(row, True)``. If no row comes back (conflict, user
+    already existed), falls back to a plain ``SELECT`` -> ``(row, False)``.
+
+    This ordering (insert-first, not select-then-insert) is what makes the
+    "newly created" signal race-safe: only one of two concurrent calls for
+    the same brand-new ``telegram_id`` can win the ``RETURNING *``, so only
+    one caller ever sees ``True``. Callers that grant one-time welcome
+    credits on creation (Task 7) MUST gate on this ``True`` flag rather than
+    re-deriving "new" from an empty ledger, which the old select-first
+    implementation punted to callers and which was race-prone under
+    concurrent initData requests for the same new user.
     """
-    row = await pool.fetchrow("SELECT * FROM users WHERE telegram_id = $1", telegram_id)
-    if row is not None:
-        return row
-
-    await pool.execute(
+    row = await pool.fetchrow(
         """
         INSERT INTO users (telegram_id, username, first_name)
         VALUES ($1, $2, $3)
         ON CONFLICT (telegram_id) DO NOTHING
+        RETURNING *
         """,
         telegram_id,
         username,
         first_name,
     )
+    if row is not None:
+        return row, True
+
     row = await pool.fetchrow("SELECT * FROM users WHERE telegram_id = $1", telegram_id)
-    return row
+    return row, False
 
 
 async def set_unix_credentials(
