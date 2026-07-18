@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from apps.api.routers.catalog import router as catalog_router
 from packages.db.migrate import run_migrations
 from packages.db.pool import create_pool
 
@@ -28,6 +29,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="UniBot API", lifespan=lifespan)
+
+app.include_router(catalog_router)
 
 
 @app.get("/health")
