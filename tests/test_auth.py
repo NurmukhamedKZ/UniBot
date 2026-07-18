@@ -142,6 +142,47 @@ async def test_second_call_does_not_double_grant_welcome_credits(pool):
     assert balance == WELCOME_CREDITS
 
 
+async def test_new_user_referral_and_welcome_credits_land_together(pool, make_user):
+    """On a single successful call for a brand-new referred user, the user
+    row, the welcome-credit ledger entry, and the referral row must all be
+    present together (they now commit in one transaction; see Task 7 fix for
+    the atomicity gap this closes)."""
+    from packages.shared.config import WELCOME_CREDITS
+
+    referrer_tid = 555007
+    referrer_id = await make_user(referrer_tid)
+
+    app = _make_app()
+    app.state.pool = pool
+
+    referred_tid = 555008
+    init_data = _build_init_data(
+        TEST_BOT_TOKEN,
+        {"id": referred_tid, "username": "frank"},
+        start_param=f"ref_{referrer_tid}",
+    )
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/whoami", headers={"X-Telegram-Init-Data": init_data})
+
+    assert resp.status_code == 200
+
+    referred_row = await pool.fetchrow(
+        "SELECT * FROM users WHERE telegram_id = $1", referred_tid
+    )
+    assert referred_row is not None
+
+    balance = await ledger.get_balance(pool, referred_row["id"])
+    assert balance == WELCOME_CREDITS
+
+    referral_row = await pool.fetchrow(
+        "SELECT * FROM referrals WHERE referred_id = $1", referred_row["id"]
+    )
+    assert referral_row is not None
+    assert referral_row["referrer_id"] == referrer_id
+
+
 async def test_expired_initdata_401(pool):
     app = _make_app()
     app.state.pool = pool
@@ -185,3 +226,50 @@ async def test_referral_start_param_registers_referral(pool, make_user):
     )
     assert referral_row is not None
     assert referral_row["referrer_id"] == referrer_id
+
+
+async def test_malformed_auth_date_401_not_500(pool):
+    """A non-numeric auth_date (only reachable past a valid HMAC in practice)
+    must 401, not raise an uncaught ValueError -> 500."""
+    app = _make_app()
+    app.state.pool = pool
+
+    data = {
+        "user": json.dumps({"id": 555009, "username": "gina"}, separators=(",", ":")),
+        "auth_date": "not-a-number",
+        "query_id": "AAtestquery",
+    }
+    check_string = "\n".join(f"{k}={v}" for k, v in sorted(data.items()))
+    secret = hmac.new(b"WebAppData", TEST_BOT_TOKEN.encode(), hashlib.sha256).digest()
+    data["hash"] = hmac.new(secret, check_string.encode(), hashlib.sha256).hexdigest()
+    init_data = urlencode(data)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/whoami", headers={"X-Telegram-Init-Data": init_data})
+
+    assert resp.status_code == 401
+
+
+async def test_malformed_user_payload_401_not_500(pool):
+    """A ``user`` field that parses as JSON but lacks an ``id`` key (only
+    reachable past a valid HMAC in practice) must 401, not raise an uncaught
+    KeyError -> 500."""
+    app = _make_app()
+    app.state.pool = pool
+
+    data = {
+        "user": json.dumps({"username": "no-id-here"}, separators=(",", ":")),
+        "auth_date": str(int(time.time())),
+        "query_id": "AAtestquery",
+    }
+    check_string = "\n".join(f"{k}={v}" for k, v in sorted(data.items()))
+    secret = hmac.new(b"WebAppData", TEST_BOT_TOKEN.encode(), hashlib.sha256).digest()
+    data["hash"] = hmac.new(secret, check_string.encode(), hashlib.sha256).hexdigest()
+    init_data = urlencode(data)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/whoami", headers={"X-Telegram-Init-Data": init_data})
+
+    assert resp.status_code == 401

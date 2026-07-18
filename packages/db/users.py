@@ -6,7 +6,7 @@ import asyncpg
 
 
 async def get_or_create_user(
-    pool: asyncpg.Pool,
+    pool_or_conn,
     telegram_id: int,
     username: str | None,
     first_name: str | None,
@@ -15,6 +15,13 @@ async def get_or_create_user(
 
     Signature: returns a 2-tuple, NOT a bare Record — ``(Record, bool)`` where
     the bool is True iff this call is the one that created the row.
+
+    ``pool_or_conn`` accepts either an ``asyncpg.Pool`` or an
+    ``asyncpg.Connection`` (both expose ``.fetchrow``), same pattern as
+    ``ledger.add_entry``, so callers that need the user-creation insert to
+    commit atomically with follow-up writes (e.g. Task 7's welcome-credit
+    grant + referral registration in ``apps.api.auth.current_user``) can pass
+    a connection already inside their own transaction.
 
     Tries the insert FIRST (``INSERT ... ON CONFLICT (telegram_id) DO NOTHING
     RETURNING *``). If a row comes back, this call won the race and just
@@ -30,7 +37,7 @@ async def get_or_create_user(
     implementation punted to callers and which was race-prone under
     concurrent initData requests for the same new user.
     """
-    row = await pool.fetchrow(
+    row = await pool_or_conn.fetchrow(
         """
         INSERT INTO users (telegram_id, username, first_name)
         VALUES ($1, $2, $3)
@@ -44,7 +51,7 @@ async def get_or_create_user(
     if row is not None:
         return row, True
 
-    row = await pool.fetchrow("SELECT * FROM users WHERE telegram_id = $1", telegram_id)
+    row = await pool_or_conn.fetchrow("SELECT * FROM users WHERE telegram_id = $1", telegram_id)
     return row, False
 
 

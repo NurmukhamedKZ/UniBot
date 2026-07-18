@@ -40,7 +40,11 @@ def validate_init_data(init_data: str, bot_token: str, max_age: int = 3600) -> d
     expected = hmac.new(secret, check_string.encode(), hashlib.sha256).hexdigest()
     if not hmac.compare_digest(expected, received_hash):
         raise HTTPException(401, "bad initData signature")
-    if time.time() - int(data.get("auth_date", 0)) > max_age:
+    try:
+        auth_date = int(data.get("auth_date", 0))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(401, "bad initData auth_date") from exc
+    if time.time() - auth_date > max_age:
         raise HTTPException(401, "initData expired")
     return data
 
@@ -78,22 +82,34 @@ async def current_user(
 
     try:
         tg_user = json.loads(data["user"])
-    except (KeyError, json.JSONDecodeError) as exc:
+        telegram_id = tg_user["id"]
+    except (KeyError, TypeError, json.JSONDecodeError) as exc:
         raise HTTPException(401, "initData missing/invalid user field") from exc
 
-    telegram_id = tg_user["id"]
     username = tg_user.get("username")
     first_name = tg_user.get("first_name")
 
     pool: asyncpg.Pool = request.app.state.pool
 
-    user, was_created = await get_or_create_user(pool, telegram_id, username, first_name)
+    # User creation + welcome credit grant + referral registration must commit
+    # (or roll back) together: if the process crashed between a standalone
+    # user-insert commit and a separate credit-insert commit, the one-shot
+    # was_created flag would never be True again and the welcome credits
+    # would be lost forever. Running get_or_create_user's insert on the same
+    # connection/transaction as the follow-up writes closes that window.
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            user, was_created = await get_or_create_user(conn, telegram_id, username, first_name)
 
-    if was_created:
-        await ledger.add_entry(pool, user_id=user["id"], delta=WELCOME_CREDITS, reason="bonus")
+            if was_created:
+                await ledger.add_entry(
+                    conn, user_id=user["id"], delta=WELCOME_CREDITS, reason="bonus"
+                )
 
-        referrer_tid = _parse_referrer_tid(data.get("start_param"))
-        if referrer_tid is not None:
-            await referrals.register(pool, referrer_tid=referrer_tid, referred_user_id=user["id"])
+                referrer_tid = _parse_referrer_tid(data.get("start_param"))
+                if referrer_tid is not None:
+                    await referrals.register(
+                        conn, referrer_tid=referrer_tid, referred_user_id=user["id"]
+                    )
 
     return user

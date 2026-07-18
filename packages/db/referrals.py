@@ -8,20 +8,26 @@ from packages.db import ledger
 from packages.shared.config import REFERRAL_CREDITS
 
 
-async def register(pool: asyncpg.Pool, referrer_tid: int, referred_user_id) -> None:
+async def register(pool_or_conn, referrer_tid: int, referred_user_id) -> None:
     """Record that ``referred_user_id`` was invited by the user with telegram_id ``referrer_tid``.
 
     No-ops if the referrer telegram_id is unknown, if it refers to the same
     person (self-referral), or if this referred user already has a referral
     row (``referred_id`` is UNIQUE — first referrer wins).
+
+    ``pool_or_conn`` accepts either an ``asyncpg.Pool`` or an
+    ``asyncpg.Connection`` (both expose ``.fetchval``/``.execute``), same
+    pattern as ``ledger.add_entry``, so callers already inside a transaction
+    (e.g. ``apps.api.auth.current_user``'s atomic user-creation block) can
+    pass their connection to keep everything atomic.
     """
-    referrer_id = await pool.fetchval(
+    referrer_id = await pool_or_conn.fetchval(
         "SELECT id FROM users WHERE telegram_id = $1", referrer_tid
     )
     if referrer_id is None or referrer_id == referred_user_id:
         return
 
-    await pool.execute(
+    await pool_or_conn.execute(
         """
         INSERT INTO referrals (referrer_id, referred_id)
         VALUES ($1, $2)
