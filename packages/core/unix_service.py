@@ -10,8 +10,8 @@ from dotenv import load_dotenv
 import os
 from pydantic import BaseModel
 
-import app.db.queries as db
-from app.utils.log_utils import log_duration
+from packages.db import catalog
+from packages.shared.log_utils import log_duration
 
 logger = logging.getLogger(__name__)
 
@@ -416,18 +416,13 @@ class UniXWatcher:
 
         output = await self._llm.ainvoke([system_prompt, user_prompt])
 
-        question_id = await db.add_question_answer(
-            pool=self.pool,
-            unix_video_id=unix_video_id,
-            question=question,
-            answer1=answers[0],
-            answer2=answers[1],
-            answer3=answers[2],
-            answer4=answers[3],
-            llm_answer=str(answers[output.answer_index]),
-        )
+        question_record = {
+            "question": question,
+            "answers": answers,
+            "llm_answer_index": output.answer_index,
+        }
 
-        return output.answer_index, question_id
+        return output.answer_index, question_record
 
     async def _click_answer(self, page: Page, answer_index: Literal[0,1,2,3]):
         """Click an answer option and then click Next. answer_index is 0-based."""
@@ -462,9 +457,9 @@ class UniXWatcher:
             return f"Error: {e}"
 
     @log_duration
-    async def _do_test(self, page: Page, unix_video_id: str) -> list[str] | str:
+    async def _do_test(self, page: Page, unix_video_id: str) -> list[dict] | str:
         """Run the 5-question test, send a Q&A card after each answered question."""
-        question_ids: list[str] = []
+        questions: list[dict] = []
         total = 5
 
         error_count = 0
@@ -476,7 +471,7 @@ class UniXWatcher:
                 current_question = int(text.strip())
                 logger.debug("Q%d active", current_question)
                 if current_question == 1:
-                    question_ids = []
+                    questions = []
 
                 test_data = await self._extract_question_and_answers(page)
                 question = test_data["question"]
@@ -488,10 +483,10 @@ class UniXWatcher:
                     error_count += 1
                     continue
 
-                answer_index, question_id = await self._invoke_llm(
+                answer_index, question_record = await self._invoke_llm(
                     question, answers, unix_video_id=unix_video_id
                 )
-                question_ids.append(question_id)
+                questions.append(question_record)
                 answer_index = max(0, min(answer_index, len(answers) - 1))
                 await page.wait_for_timeout(3000)
 
@@ -504,7 +499,7 @@ class UniXWatcher:
                 await page.wait_for_timeout(3000)
             except Exception as e:
                 return f"Error: {e}"
-        return question_ids
+        return questions
 
     async def _start_and_watch_video(self, page: Page) -> None:
         # await page.wait_for_timeout(500)
@@ -533,16 +528,16 @@ class UniXWatcher:
             await page.locator('img[src^="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQi"]').nth(2).click()
             lesson_id = self.current_lesson_id
 
-        await db.ensure_unix_video_exists(self.pool, lesson_id)
+        await catalog.ensure_lesson_exists(self.pool, lesson_id)
 
         # Case 1: Test mid-session
         if await page.locator("text=Time for the test").first.is_visible():
-            question_ids = await self._do_test(page, unix_video_id=lesson_id)
-            if isinstance(question_ids, list):
-                await db.add_unix_video(self.pool, lesson_id, question_ids)
+            questions = await self._do_test(page, unix_video_id=lesson_id)
+            if isinstance(questions, list):
+                await catalog.save_questions(self.pool, lesson_id, questions)
                 return await self._get_test_result(page)
             else:
-                return question_ids
+                return questions
 
         # Case 2: No test tab → video-only lesson
         if not await page.locator("a").filter(has_text="Test task").first.is_visible():
@@ -565,12 +560,12 @@ class UniXWatcher:
         # Case 4: Video already watched
         if await page.locator("button").filter(has_text="Start the test").is_visible():
             await page.locator("button").filter(has_text="Start the test").click()
-            question_ids = await self._do_test(page, unix_video_id=lesson_id)
-            if isinstance(question_ids, list):
-                await db.add_unix_video(self.pool, lesson_id, question_ids)
+            questions = await self._do_test(page, unix_video_id=lesson_id)
+            if isinstance(questions, list):
+                await catalog.save_questions(self.pool, lesson_id, questions)
                 return await self._get_test_result(page)
             else:
-                return question_ids
+                return questions
 
         # Case 5: Watch video, then take test
         if await self._ensure_lesson_watched_fast(page, lesson_id):
@@ -588,15 +583,23 @@ class UniXWatcher:
             await page.locator("button.bg-\\[\\#FFDD33\\]", has_text="Go to test").click()
 
         await page.locator("button").filter(has_text="Start the test").click()
-        question_ids = await self._do_test(page, unix_video_id=lesson_id)
-        if isinstance(question_ids, list):
-            await db.add_unix_video(self.pool, lesson_id, question_ids)
+        questions = await self._do_test(page, unix_video_id=lesson_id)
+        if isinstance(questions, list):
+            await catalog.save_questions(self.pool, lesson_id, questions)
             return await self._get_test_result(page)
         else:
-            return question_ids
+            return questions
 
     @log_duration
     async def watch_unix_videos(self, lesson_ids: list) -> list:
+        """LEGACY, не использовать — цикл строит worker (см. Task 11 в docs/plan.md).
+
+        Оставлен как референс для browser-launch args / login-цикла, которые
+        уже вылизаны под слабый VPS. Вызовы БД старого бота (can_watch_video,
+        mark_task_*, add_user_video, increment_watched_videos, decrement_video)
+        не существуют в новом db-слое и здесь удалены — списание кредитов и
+        учёт прогресса теперь делает worker вокруг ``watch_unix``.
+        """
         async with async_playwright() as p:
             browser = await p.chromium.launch(
                 headless=True,
@@ -619,9 +622,6 @@ class UniXWatcher:
                 page = await context.new_page()
                 if not await self._login(page, self.email, self.password):
                     await self._log("❌ Login failed. Check your credentials with /setcredentials.")
-                    if self.pool:
-                        for lid in lesson_ids:
-                            await db.mark_task_failed(self.pool, self.telegram_id, lid)
                     return []
 
                 lesson_count = 0
@@ -630,22 +630,9 @@ class UniXWatcher:
                 while lesson_count < len(lesson_ids) and error_count < 3:
                     lesson_id = lesson_ids[lesson_count]
 
-                    if self.pool:
-                        await db.mark_task_in_progress(self.pool, self.telegram_id, lesson_id)
-
                     if self.stop_event and self.stop_event.is_set():
                         await self._log("🛑 Stop requested, halting lesson queue.")
                         break
-
-                    if self.pool:
-                        can_watch, remaining = await db.can_watch_video(self.pool, self.telegram_id)
-                        if not can_watch:
-                            await self._log(
-                                "⚠️ Лимит видео исчерпан!\n"
-                                "Используй /upgrade, чтобы перейти на другой план.\n"
-                                "Или пригласи друга /referral что бы получить +3 видео"
-                            )
-                            break
 
                     try:
                         result: str = await self.watch_unix(page, lesson_id)
@@ -660,19 +647,10 @@ class UniXWatcher:
                                 f"Result: {html_module.escape(str(result))}\n\n"
                             )
                             error_count += 1
-                            if self.pool:
-                                await db.mark_task_failed(self.pool, self.telegram_id, self.current_lesson_id)
                             continue
 
                         elif result == "video doesn't have test":
                             await self._log(f"✅ <b>Lesson #{self.current_lesson_id} done</b> — no test\n⏱ {elapsed} total")
-                            await db.add_unix_video(self.pool, self.current_lesson_id, [])
-                            await db.add_user_video(self.pool, self.telegram_id, self.current_lesson_id)
-                            await db.increment_watched_videos(self.pool, self.telegram_id)
-                            if self.pool:
-                                await db.decrement_video(self.pool, self.telegram_id)
-                            if self.pool:
-                                await db.mark_task_completed(self.pool, self.telegram_id, self.current_lesson_id)
                             lesson_count += 1
                             error_count = 0
                             continue
@@ -685,12 +663,6 @@ class UniXWatcher:
 
                             if score_int >= 3.5:
                                 await self._log(f"✅ <b>Lesson #{self.current_lesson_id} done — {html_module.escape(str(result))}</b>\n⏱ {elapsed} total")
-                                await db.add_user_video(self.pool, self.telegram_id, self.current_lesson_id)
-                                await db.increment_watched_videos(self.pool, self.telegram_id)
-                                if self.pool:
-                                    await db.decrement_video(self.pool, self.telegram_id)
-                                if self.pool:
-                                    await db.mark_task_completed(self.pool, self.telegram_id, self.current_lesson_id)
                                 lesson_count += 1
                                 error_count = 0
 
@@ -700,30 +672,22 @@ class UniXWatcher:
                                     f"Score: {html_module.escape(str(result))}  (below passing)\n\n"
                                     "Stopped. Send lesson IDs again to retry."
                                 )
-                                if self.pool:
-                                    await db.mark_task_failed(self.pool, self.telegram_id, self.current_lesson_id)
                                 break
 
                             else:
                                 await self._log(f"⚠️ <b>Lesson #{self.current_lesson_id}</b> — unexpected result: {html_module.escape(str(result))}, skipping")
                                 error_count += 1
-                                if self.pool:
-                                    await db.mark_task_failed(self.pool, self.telegram_id, self.current_lesson_id)
 
                     except UnixSiteUnavailableError:
                         await self._log(
                             "⚠️ Сайт UniX сейчас не работает.\n"
                             "Попробуй снова позже."
                         )
-                        if self.pool:
-                            await db.mark_task_failed(self.pool, self.telegram_id, self.current_lesson_id)
                         break
 
                     except Exception as e:
                         await self._log(f"❌ Error on lesson #{self.current_lesson_id}: {html_module.escape(str(e))}")
                         error_count += 1
-                        if self.pool:
-                            await db.mark_task_failed(self.pool, self.telegram_id, self.current_lesson_id)
             finally:
                 await context.close()
                 await browser.close()

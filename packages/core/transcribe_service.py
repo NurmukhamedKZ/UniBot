@@ -10,7 +10,7 @@ from openai import OpenAI
 
 from playwright.async_api import async_playwright
 
-import app.db.queries as db
+from packages.db import catalog
 
 load_dotenv()
 
@@ -29,10 +29,10 @@ class TranscribeService:
     async def get_or_create_transcription(self, lesson_id: str) -> str:
         """Return cached transcription or generate a new one."""
         if self.pool:
-            row = await db.get_unix_video(self.pool, lesson_id)
-            if row and row["video_transcribe"]:
+            cached = await catalog.get_transcript(self.pool, lesson_id)
+            if cached:
                 logger.info("lesson_id=%s | Returning cached transcription", lesson_id)
-                return row["video_transcribe"]
+                return cached
 
         video_url = await self._get_video_url(lesson_id)
         logger.info("lesson_id=%s | Downloading video from %s", lesson_id, video_url)
@@ -44,7 +44,8 @@ class TranscribeService:
         logger.info("lesson_id=%s | Transcription complete (%d chars)", lesson_id, len(text))
 
         if self.pool:
-            await db.save_transcription(self.pool, lesson_id, text)
+            await catalog.ensure_lesson_exists(self.pool, lesson_id)
+            await catalog.save_transcript(self.pool, lesson_id, text)
 
         return text
 
