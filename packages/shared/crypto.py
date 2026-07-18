@@ -1,6 +1,6 @@
 from cryptography.fernet import Fernet
 
-from app.config import ENCRYPTION_KEY
+from packages.shared.config import ENCRYPTION_KEY
 
 if not ENCRYPTION_KEY:
     raise RuntimeError(
