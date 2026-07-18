@@ -272,6 +272,20 @@ async def test_cancel_someone_elses_task_rejected(pool):
     assert row["status"] == "queued"
 
 
+async def test_cancel_malformed_uuid_returns_404(pool):
+    telegram_id = 910012
+    app = _make_app(pool)
+    await _get_or_create_user_row(pool, app, telegram_id)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/tasks/not-a-uuid/cancel", headers=_auth_headers(telegram_id)
+        )
+
+    assert resp.status_code == 404
+
+
 async def test_cancel_terminal_task_is_noop_200(pool):
     telegram_id = 910011
     app = _make_app(pool)

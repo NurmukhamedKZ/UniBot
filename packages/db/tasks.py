@@ -95,13 +95,22 @@ async def finish(pool_or_conn, task_id, status: str, error: str | None = None) -
 
 
 async def update_progress(pool_or_conn, task_id, progress: dict) -> None:
-    """Update a task's progress JSON.
+    """Shallow-merge ``progress`` into a task's existing ``progress`` jsonb.
 
     ``pool_or_conn`` accepts either an ``asyncpg.Pool`` or an
     ``asyncpg.Connection``, same pattern as ``finish``/``ledger.add_entry``.
+
+    Uses Postgres's atomic ``jsonb || jsonb`` merge (server-side, single
+    statement) rather than a full-column replace: keys in ``progress``
+    overwrite matching keys already stored, but unrelated keys survive. This
+    matters because the worker (owner of ``current``/``total``/``scores``)
+    and the cancel endpoint (owner of ``cancel_requested``, via
+    ``merge_progress``) both write this column concurrently -- a blind
+    replace here would silently wipe out a ``cancel_requested`` flag set by
+    the API on the worker's next progress write.
     """
     await pool_or_conn.execute(
-        "UPDATE watch_tasks SET progress = $2::jsonb WHERE id = $1",
+        "UPDATE watch_tasks SET progress = progress || $2::jsonb WHERE id = $1",
         task_id,
         json.dumps(progress),
     )
@@ -134,32 +143,19 @@ async def get_task(pool: asyncpg.Pool, task_id) -> asyncpg.Record | None:
 async def merge_progress(pool_or_conn, task_id, patch: dict) -> None:
     """Shallow-merge ``patch`` into the task's existing ``progress`` jsonb.
 
-    Unlike ``update_progress`` (which replaces the whole column), this reads
-    the current progress and merges keys in Python before writing back, so
-    setting e.g. ``cancel_requested`` never clobbers fields the worker is
-    concurrently maintaining (``current``, ``total``, ``scores``, ...).
-
-    Not race-free against a concurrent writer (read-modify-write, no row
-    lock) — acceptable here because the only two writers are the worker
-    (owns ``current``/``total``/``scores`` almost exclusively during a run)
-    and this cancel endpoint (owns only ``cancel_requested``), and a lost
-    update would just mean a slightly stale progress snapshot, not a lost
-    cancel signal in the terminal-status sense.
+    Same atomic server-side merge as ``update_progress`` (``progress =
+    progress || $2::jsonb``, a single statement) so setting e.g.
+    ``cancel_requested`` never clobbers fields the worker is concurrently
+    maintaining (``current``, ``total``, ``scores``, ...), and is never
+    itself lost to a concurrent worker write: there's no read-modify-write
+    gap here for a concurrent ``||``-merge UPDATE to race against -- both
+    statements are serialized by Postgres's row-level locking and each
+    survives.
     """
-    row = await pool_or_conn.fetchrow(
-        "SELECT progress FROM watch_tasks WHERE id = $1", task_id
-    )
-    if row is None:
-        return
-    progress = row["progress"]
-    if isinstance(progress, str):
-        progress = json.loads(progress)
-    progress = dict(progress or {})
-    progress.update(patch)
     await pool_or_conn.execute(
-        "UPDATE watch_tasks SET progress = $2::jsonb WHERE id = $1",
+        "UPDATE watch_tasks SET progress = progress || $2::jsonb WHERE id = $1",
         task_id,
-        json.dumps(progress),
+        json.dumps(patch),
     )
 
 
