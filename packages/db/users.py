@@ -58,12 +58,28 @@ async def get_or_create_user(
 async def set_unix_credentials(
     pool: asyncpg.Pool,
     user_id,
-    email: str,
-    password_enc: str,
+    email: str | None,
+    password_enc: str | None,
 ) -> None:
+    """Set (or, passing ``None``/``None``, clear) a user's UniX credentials.
+
+    No separate "clear credentials" function exists in this module -- the
+    ``DELETE /me/unix-credentials`` endpoint reuses this with both arguments
+    ``None``, which is exactly the NULL/NULL update it needs.
+    """
     await pool.execute(
         "UPDATE users SET unix_email = $2, unix_password_enc = $3 WHERE id = $1",
         user_id,
         email,
         password_enc,
     )
+
+
+async def get_id_by_telegram_id(pool: asyncpg.Pool, telegram_id: int):
+    """Look up a user's internal ``id`` by their Telegram id, or ``None``.
+
+    Used by the Tribute webhook (``apps.api.routers.payments``), which
+    resolves a user from a Telegram id embedded in Tribute's payload rather
+    than from a Telegram-initData-authenticated request.
+    """
+    return await pool.fetchval("SELECT id FROM users WHERE telegram_id = $1", telegram_id)

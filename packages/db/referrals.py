@@ -81,3 +81,23 @@ async def credit_if_first_watch(pool: asyncpg.Pool, user_id):
                 reason="referral",
             )
             return referrer_id
+
+
+async def get_stats(pool: asyncpg.Pool, referrer_id) -> tuple[int, int]:
+    """Return ``(invited, credited)`` counts for a referrer, used by ``GET /referral``.
+
+    ``invited`` = total rows where this user is the referrer (however far
+    along the referred user is), ``credited`` = the subset where the
+    referrer's bonus has already been paid out (``credited = true``).
+    """
+    row = await pool.fetchrow(
+        """
+        SELECT
+            COUNT(*) AS invited,
+            COUNT(*) FILTER (WHERE credited) AS credited
+        FROM referrals
+        WHERE referrer_id = $1
+        """,
+        referrer_id,
+    )
+    return int(row["invited"]), int(row["credited"])
