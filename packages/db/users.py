@@ -83,3 +83,15 @@ async def get_id_by_telegram_id(pool: asyncpg.Pool, telegram_id: int):
     than from a Telegram-initData-authenticated request.
     """
     return await pool.fetchval("SELECT id FROM users WHERE telegram_id = $1", telegram_id)
+
+
+async def get_by_id(pool: asyncpg.Pool, user_id) -> asyncpg.Record | None:
+    """Fetch a full user row by internal ``id``, or ``None`` if it doesn't exist.
+
+    Used by the worker (``apps.worker.executor``) to resolve a task owner's
+    ``telegram_id`` (for the Bot API chat_id) and UniX credentials
+    (``unix_email``/``unix_password_enc``, the latter still Fernet-encrypted
+    -- callers decrypt with ``packages.shared.crypto.decrypt_password``), and
+    to resolve a referrer's ``telegram_id`` for the referral-bonus notification.
+    """
+    return await pool.fetchrow("SELECT * FROM users WHERE id = $1", user_id)
