@@ -27,12 +27,28 @@ function applyTheme(): void {
   root.style.colorScheme = WebApp.colorScheme
 }
 
-/** Call once on app boot: expands the Mini App to full height and syncs theme. */
+/**
+ * Call once on app boot: expands the Mini App to full height and syncs theme.
+ *
+ * @twa-dev/sdk's `WebApp` export is a snapshot of `window.Telegram.WebApp`
+ * taken at import time, but the real client populates that object
+ * asynchronously -- `.ready` can be undefined for the first render tick.
+ * Calling it synchronously here would throw and abort `main.tsx` before
+ * `createRoot().render()` ever runs, leaving a blank screen. Poll until the
+ * method actually exists instead of trusting the import-time snapshot.
+ */
 export function initTelegramWebApp(): void {
-  WebApp.ready()
-  WebApp.expand()
-  applyTheme()
-  WebApp.onEvent('themeChanged', applyTheme)
+  const tryInit = (): void => {
+    if (typeof WebApp.ready !== 'function') {
+      setTimeout(tryInit, 50)
+      return
+    }
+    WebApp.ready()
+    WebApp.expand()
+    applyTheme()
+    WebApp.onEvent('themeChanged', applyTheme)
+  }
+  tryInit()
 }
 
 export { WebApp }

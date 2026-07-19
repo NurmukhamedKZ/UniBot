@@ -10,3 +10,6 @@ Telegram Mini App: автопросмотр лекций UniX (Playwright + LLM)
 - Запуск: docker compose up -d --build. Тесты: pytest tests/ -v.
 - Прод: Contabo VPS (общий с другими проектами), вход через хостовый nginx,
   api на 127.0.0.1:8001. Домен: app.workkeldi.com.
+
+@docs/plan.md
+@docs/spec.md

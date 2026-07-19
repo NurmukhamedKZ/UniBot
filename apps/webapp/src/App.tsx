@@ -1,5 +1,6 @@
 import { NavLink, Outlet, Route, Routes } from 'react-router-dom'
 import { CreditBadge } from './components/CreditBadge'
+import { ErrorToasts } from './components/ErrorToasts'
 import { TaskProgressBar } from './components/TaskProgressBar'
 import { OnboardingGate } from './pages/Onboarding'
 import { Catalog } from './pages/Catalog'
@@ -43,17 +44,20 @@ function Layout() {
 
 function App() {
   return (
-    <Routes>
-      <Route path="/" element={<OnboardingGate />} />
-      <Route element={<Layout />}>
-        <Route path="/catalog" element={<Catalog />} />
-        <Route path="/courses/:id" element={<CoursePage />} />
-        <Route path="/lessons/:id" element={<Lesson />} />
-        <Route path="/profile" element={<Profile />} />
-        <Route path="/settings" element={<Settings />} />
-        <Route path="/paywall" element={<Paywall />} />
-      </Route>
-    </Routes>
+    <>
+      <ErrorToasts />
+      <Routes>
+        <Route path="/" element={<OnboardingGate />} />
+        <Route element={<Layout />}>
+          <Route path="/catalog" element={<Catalog />} />
+          <Route path="/courses/:id" element={<CoursePage />} />
+          <Route path="/lessons/:id" element={<Lesson />} />
+          <Route path="/profile" element={<Profile />} />
+          <Route path="/settings" element={<Settings />} />
+          <Route path="/paywall" element={<Paywall />} />
+        </Route>
+      </Routes>
+    </>
   )
 }
 

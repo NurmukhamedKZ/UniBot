@@ -29,6 +29,25 @@ export function isNoCredentials(err: unknown): err is ApiError {
 }
 
 /**
+ * Fired for every failed request (ApiError from a non-2xx response, or a
+ * network/CORS failure that never reached the backend at all) so a single
+ * global listener (see ErrorToasts.tsx) can surface it, regardless of
+ * whether the calling page bothers to check `isError` / catch the promise.
+ */
+export const apiErrorEvents = new EventTarget()
+
+export function describeApiError(err: unknown): string {
+  if (err instanceof ApiError) {
+    const detail = err.body.detail
+    if (typeof detail === 'string') return detail
+    if (typeof err.body.error === 'string') return err.body.error
+    return `Ошибка ${err.status}`
+  }
+  if (err instanceof Error) return err.message
+  return 'Неизвестная ошибка'
+}
+
+/**
  * Fetch wrapper for the UniBot API. Always sends the raw Telegram
  * `initData` string so the backend's `current_user` dependency
  * (apps/api/auth.py) can HMAC-validate it and auto-create the user -- no
@@ -45,7 +64,16 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
     headers.set('Content-Type', 'application/json')
   }
 
-  const res = await fetch(`/api${path}`, { ...init, headers })
+  let res: Response
+  try {
+    res = await fetch(`/api${path}`, { ...init, headers })
+  } catch (err) {
+    const networkErr = new Error(
+      `Сеть: не удалось связаться с сервером (${path}). ${err instanceof Error ? err.message : ''}`.trim(),
+    )
+    apiErrorEvents.dispatchEvent(new CustomEvent('error', { detail: networkErr.message }))
+    throw networkErr
+  }
 
   if (res.status === 204) return undefined as T
 
@@ -60,7 +88,11 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
   }
 
   if (!res.ok) {
-    throw new ApiError(res.status, (body as Record<string, unknown>) ?? {})
+    const apiErr = new ApiError(res.status, (body as Record<string, unknown>) ?? {})
+    apiErrorEvents.dispatchEvent(
+      new CustomEvent('error', { detail: `${path}: ${describeApiError(apiErr)}` }),
+    )
+    throw apiErr
   }
 
   return body as T

@@ -808,20 +808,20 @@ async def handle_successful_payment(message: Message):
 
 **Files:** Create: `src/pages/{Onboarding,Catalog,Course,Lesson,Profile,Settings,Paywall}.tsx`, `src/components/{CreditBadge,TaskProgressBar,CredentialsModal}.tsx`
 
-- [ ] **Onboarding** — 2–3 слайда (localStorage-флаг), → Catalog.
-- [ ] **Catalog** — `GET /courses`, карточки с обложками.
-- [ ] **Course** — `GET /courses/{id}`; кнопка «Смотреть весь курс» → `POST /watch {type:course}`; список уроков со статусами.
-- [ ] **Lesson** — транскриб (кнопка скачать .txt через Blob), аккордеон Q&A с подсветкой llm-ответа, кнопка «Автопросмотр — 1 кредит», «Открыть видео в UniX» (внешняя ссылка).
-- [ ] **TaskProgressBar** — глобальный, поллинг `GET /tasks/active` каждые 5с пока есть активная задача; кнопка отмены.
-- [ ] **Profile** — баланс, история, referral-ссылка (share через `WebApp.openTelegramLink`).
-- [ ] **Settings** — форма кредов UniX (PUT/DELETE), предупреждение о шифровании.
-- [ ] **Paywall** — 3 карточки пакетов; Tribute → `WebApp.openLink(tribute_url)`; Stars → `POST create-invoice` → `WebApp.openInvoice(url)`.
+- [x] **Onboarding** — 2–3 слайда (localStorage-флаг), → Catalog.
+- [x] **Catalog** — `GET /courses`, карточки с обложками.
+- [x] **Course** — `GET /courses/{id}`; кнопка «Смотреть весь курс» → `POST /watch {type:course}`; список уроков со статусами.
+- [x] **Lesson** — транскриб (кнопка скачать .txt через Blob), аккордеон Q&A с подсветкой llm-ответа, кнопка «Автопросмотр — 1 кредит», «Открыть видео в UniX» (внешняя ссылка).
+- [x] **TaskProgressBar** — глобальный, поллинг `GET /tasks/active` каждые 5с пока есть активная задача; кнопка отмены.
+- [x] **Profile** — баланс, история, referral-ссылка (share через `WebApp.openTelegramLink`).
+- [x] **Settings** — форма кредов UniX (PUT/DELETE), предупреждение о шифровании.
+- [x] **Paywall** — 3 карточки пакетов; Tribute → `WebApp.openLink(tribute_url)`; Stars → `POST create-invoice` → `WebApp.openInvoice(url)`.
   Психология сетки: крупно ₸/видео на каждой карточке (149 / 50 / 30 ₸);
   L подсвечен «Лучший выбор» + бейдж «Выгоднее в 5 раз»; у M и L зачёркнутая
   цена по тарифу S (напр. ~~7 450 ₸~~ → 2 490 ₸ у M); порядок карточек S→M→L,
   чтобы глаз шёл по нарастающей выгоде.
-- [ ] Проверка: `npm run build` → dist; локально через `WebApp` mock.
-- [ ] Commit: `feat: webapp screens`
+- [x] Проверка: `npm run build` → dist; локально через `WebApp` mock.
+- [x] Commit: `feat: webapp screens`
 
 ---
 
