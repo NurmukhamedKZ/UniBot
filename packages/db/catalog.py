@@ -142,6 +142,32 @@ async def list_courses(pool: asyncpg.Pool) -> list[asyncpg.Record]:
     return await pool.fetch("SELECT * FROM courses ORDER BY title")
 
 
+async def get_watched_lesson_ids(pool: asyncpg.Pool, user_id) -> set[str]:
+    """Lesson ids ``user_id`` has already successfully watched (and been
+    credited for) — used by ``run_course`` (apps/worker/executor.py, Task 12)
+    to skip lessons a course-batch run would otherwise re-charge.
+
+    A lesson counts as watched if there is a ``credit_ledger`` row with
+    ``reason='watch'`` for this user whose ``task_id`` points to a
+    ``watch_tasks`` row carrying that ``lesson_id`` — i.e. a completed,
+    credited ``run_lesson`` (or a prior ``run_course`` lesson-attempt: both
+    debit through the same ``reason='watch'`` ``credit_ledger`` insert, see
+    ``run_lesson``/``run_course``). Not scoped to a single course_id since a
+    lesson_id is only ever watched once regardless of which course listing
+    it's looked up through.
+    """
+    rows = await pool.fetch(
+        """
+        SELECT DISTINCT wt.lesson_id
+        FROM credit_ledger cl
+        JOIN watch_tasks wt ON wt.id = cl.task_id
+        WHERE cl.user_id = $1 AND cl.reason = 'watch' AND wt.lesson_id IS NOT NULL
+        """,
+        user_id,
+    )
+    return {row["lesson_id"] for row in rows}
+
+
 async def get_course_lessons(pool: asyncpg.Pool, course_id: str) -> list[asyncpg.Record]:
     return await pool.fetch(
         """

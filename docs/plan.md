@@ -145,7 +145,7 @@ class TranscribeService:
 `packages/shared/crypto.py`, `packages/shared/log_utils.py`,
 `docs/spec.md`, `docs/plan.md`.
 
-- [ ] Создать `CLAUDE.md` в корне:
+- [x] Создать `CLAUDE.md` в корне:
 
 ```markdown
 # UniBot
@@ -162,7 +162,7 @@ Telegram Mini App: автопросмотр лекций UniX (Playwright + LLM)
   api на 127.0.0.1:8001. Домен: app.workkeldi.com.
 ```
 
-- [ ] `git init unibot`, создать структуру:
+- [x] `git init unibot`, создать структуру:
 
 ```
 unibot/
@@ -177,7 +177,7 @@ unibot/
 └── .gitignore  (.env, node_modules, dist, __pycache__)
 ```
 
-- [ ] `requirements.txt`:
+- [x] `requirements.txt`:
 
 ```
 fastapi>=0.115
@@ -197,7 +197,7 @@ pytest-asyncio>=0.24
 httpx>=0.27
 ```
 
-- [ ] `.env.example`:
+- [x] `.env.example`:
 
 ```
 TELEGRAM_TOKEN=
@@ -214,13 +214,13 @@ TRIBUTE_API_KEY=
 TRIBUTE_WEBHOOK_SECRET=
 ```
 
-- [ ] Commit: `chore: repo skeleton`
+- [x] Commit: `chore: repo skeleton`
 
 ### Task 2: docker-compose + Dockerfiles
 
 **Files:** Create: `docker-compose.yml`, `Dockerfile.api`, `Dockerfile.bot`, `Dockerfile.worker`, `nginx/nginx.conf`
 
-- [ ] `docker-compose.yml`:
+- [x] `docker-compose.yml`:
 
 ```yaml
 services:
@@ -266,7 +266,7 @@ volumes: { pgdata: {}, redisdata: {} }
 # api.otclick.org → 127.0.0.1:8000). UniBot подключается server-блоком к нему.
 ```
 
-- [ ] `Dockerfile.api` (bot аналогично, entrypoint другой; worker — с playwright):
+- [x] `Dockerfile.api` (bot аналогично, entrypoint другой; worker — с playwright):
 
 ```dockerfile
 FROM python:3.13-slim
@@ -282,7 +282,7 @@ CMD ["uvicorn", "apps.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
 `Dockerfile.worker` дополнительно: `RUN playwright install chromium --with-deps`, `CMD ["python", "-m", "apps.worker.main"]`.
 `Dockerfile.bot`: `CMD ["python", "-m", "apps.bot.main"]`.
 
-- [ ] `nginx/unibot.conf` — server-блок для ХОСТОВОГО nginx (кладётся в
+- [x] `nginx/unibot.conf` — server-блок для ХОСТОВОГО nginx (кладётся в
   `/etc/nginx/sites-available/unibot` на VPS, симлинк в sites-enabled):
 
 ```nginx
@@ -311,14 +311,14 @@ server {
 
   TLS: `certbot --nginx -d <домен-unibot>` — certbot сам добавит 443-блок.
   Mini App без HTTPS не работает — обязательный шаг.
-- [ ] Проверка: `docker compose up postgres redis` — оба healthy; `nginx -t` на VPS проходит.
-- [ ] Commit: `chore: docker infra`
+- [x] Проверка: `docker compose up postgres redis` — оба healthy; `nginx -t` на VPS проходит.
+- [x] Commit: `chore: docker infra`
 
 ### Task 3: Миграции
 
 **Files:** Create: `migrations/001_init.sql`, `packages/db/migrate.py`
 
-- [ ] `migrations/001_init.sql` — полная схема из спеки:
+- [x] `migrations/001_init.sql` — полная схема из спеки:
 
 ```sql
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
@@ -421,9 +421,9 @@ CREATE TABLE schema_migrations (filename text PRIMARY KEY, applied_at timestampt
 
 Замечание: `lessons.lesson_id` — FK-цель для transcripts/questions, но воркер может встретить урок раньше скрейпа каталога → перед вставкой transcript/questions всегда `INSERT INTO lessons (lesson_id) ... ON CONFLICT DO NOTHING` (аналог старого `ensure_unix_video_exists`).
 
-- [ ] `packages/db/migrate.py` — прогон `migrations/*.sql` по порядку, пропуск применённых (по `schema_migrations`). Вызывается на старте api.
-- [ ] Проверка: `docker compose run api python -m packages.db.migrate` → таблицы созданы (`\dt` через psql).
-- [ ] Commit: `feat: db schema + migrator`
+- [x] `packages/db/migrate.py` — прогон `migrations/*.sql` по порядку, пропуск применённых (по `schema_migrations`). Вызывается на старте api.
+- [x] Проверка: `docker compose run api python -m packages.db.migrate` → таблицы созданы (`\dt` через psql).
+- [x] Commit: `feat: db schema + migrator`
 
 ---
 
@@ -435,7 +435,7 @@ CREATE TABLE schema_migrations (filename text PRIMARY KEY, applied_at timestampt
 
 **Produces:** `config.PACKAGES`, `encrypt(str)->str`, `decrypt(str)->str`
 
-- [ ] `config.py` — все env как в старом `app/config.py` + :
+- [x] `config.py` — все env как в старом `app/config.py` + :
 
 ```python
 PACKAGES = {
@@ -449,7 +449,7 @@ WELCOME_CREDITS = 2        # бонус новому юзеру
 REFERRAL_CREDITS = 3       # бонус рефереру
 ```
 
-- [ ] `crypto.py` УЖЕ в репо (боевой файл старого бота, менять логику нельзя).
+- [x] `crypto.py` УЖЕ в репо (боевой файл старого бота, менять логику нельзя).
   Единственная правка — импорт: `from app.config import ENCRYPTION_KEY` →
   `from packages.shared.config import ENCRYPTION_KEY`. Итоговый файл:
 
@@ -475,8 +475,8 @@ def decrypt_password(token: str) -> str:
     return _fernet.decrypt(token.encode()).decode()
 ```
 
-- [ ] `log_utils.py` УЖЕ в репо — поправить импорты аналогично, если ссылаются на `app.*`.
-- [ ] Commit: `feat: shared config + crypto`
+- [x] `log_utils.py` УЖЕ в репо — поправить импорты аналогично, если ссылаются на `app.*`.
+- [x] Commit: `feat: shared config + crypto`
 
 ### Task 5: packages/db — data layer
 
@@ -519,7 +519,7 @@ async def list_courses(pool) -> list[Record]
 async def get_course_lessons(pool, course_id) -> list[Record]    # + has_transcript, questions_count
 ```
 
-- [ ] `claim_next` — сердце очереди:
+- [x] `claim_next` — сердце очереди:
 
 ```python
 async def claim_next(pool):
@@ -540,19 +540,19 @@ async def claim_next(pool):
             return row
 ```
 
-- [ ] Тесты (pytest-asyncio, против локального postgres из compose):
+- [x] Тесты (pytest-asyncio, против локального postgres из compose):
   - `test_balance_is_sum_of_deltas` — +10, -1, -1 → 8
   - `test_duplicate_payment_not_double_credited` — два вызова `record_payment_and_credit` с одним `external_id` → баланс +credits один раз, второй вызов возвращает False
   - `test_second_active_task_rejected` — enqueue дважды → второй падает
   - `test_claim_marks_running`, `test_requeue_stale`
-- [ ] Run: `pytest tests/ -v` → PASS
-- [ ] Commit: `feat: db layer + queue + tests`
+- [x] Run: `pytest tests/ -v` → PASS
+- [x] Commit: `feat: db layer + queue + tests`
 
 ### Task 6: packages/core — адаптация перенесённых сервисов
 
 **Files:** Modify: `packages/core/unix_service.py`, `packages/core/transcribe_service.py` (УЖЕ лежат в репо — боевой код старого бота, интерфейсы описаны в секции «Контекст для ИИ-агентов»)
 
-- [ ] `unix_service.py` — правки ТОЛЬКО в точках интеграции, Playwright/LLM-поток,
+- [x] `unix_service.py` — правки ТОЛЬКО в точках интеграции, Playwright/LLM-поток,
   `_do_test`, селекторы, тайминги НЕ трогать:
   - `import app.db.queries as db` → `from packages.db import catalog`;
   - сохранение вопросов/ответов: старые `db.add_question_answer` /
@@ -566,14 +566,14 @@ async def claim_next(pool):
     использовать — цикл строит worker» (внутри вызовы несуществующих db-функций
     старого бота: can_watch_video, mark_task_*; удалить их вместе с методом ИЛИ
     оставить метод как референс браузер-цикла, но убрать из него db-вызовы).
-- [ ] `transcribe_service.py`:
+- [x] `transcribe_service.py`:
   - `import app.db.queries as db` → `packages.db.catalog`
     (`get_transcript(lesson_id)` / `save_transcript(lesson_id, text)`
     вместо `get_unix_video` / `save_transcription`);
   - перед сохранением — `ensure_lesson_exists(lesson_id)`.
-- [ ] Проверка: `python -c "from packages.core.unix_service import UniXWatcher"`
+- [x] Проверка: `python -c "from packages.core.unix_service import UniXWatcher"`
   без ошибок импорта; при наличии кредов — standalone прогон одного lesson_id.
-- [ ] Commit: `feat: adapt unix_service + transcribe_service to new db layer`
+- [x] Commit: `feat: adapt unix_service + transcribe_service to new db layer`
 
 ---
 
@@ -585,7 +585,7 @@ async def claim_next(pool):
 
 **Produces:** dependency `current_user` → Record юзера.
 
-- [ ] `auth.py` — валидация Telegram WebApp initData:
+- [x] `auth.py` — валидация Telegram WebApp initData:
 
 ```python
 import hashlib, hmac, json, time
@@ -607,44 +607,44 @@ def validate_init_data(init_data: str, bot_token: str, max_age: int = 3600) -> d
 
 Dependency `current_user`: читает заголовок `X-Telegram-Init-Data`, валидирует, `get_or_create_user`; при создании нового юзера — welcome-кредиты (`add_entry(delta=WELCOME_CREDITS, reason='bonus')`) и обработка `start_param=ref_<tid>` → `referrals.register`.
 
-- [ ] Тест: `test_bad_hash_401`, `test_valid_initdata_creates_user_with_welcome_credits` (initData собрать в тесте той же HMAC-схемой).
-- [ ] `main.py`: lifespan → пул asyncpg + прогон миграций; подключение роутеров.
-- [ ] Commit: `feat: api skeleton + initData auth`
+- [x] Тест: `test_bad_hash_401`, `test_valid_initdata_creates_user_with_welcome_credits` (initData собрать в тесте той же HMAC-схемой).
+- [x] `main.py`: lifespan → пул asyncpg + прогон миграций; подключение роутеров.
+- [x] Commit: `feat: api skeleton + initData auth`
 
 ### Task 8: Каталог + контент endpoints
 
 **Files:** Create: `apps/api/routers/catalog.py`
 
-- [ ] `GET /courses` → список из `courses`.
-- [ ] `GET /courses/{course_id}` → уроки + для каждого: `has_transcript` (EXISTS transcripts), `questions_count`.
-- [ ] `GET /lessons/{lesson_id}` → `{title, transcript, questions: [{question, answers, llm_answer_index}]}`. Публично (auth всё равно требуем — юзер телеграмный, но кредиты не нужны).
-- [ ] `POST /lessons/{lesson_id}/transcribe` → если transcript есть — 200 сразу; иначе enqueue задача `type='transcribe'` → 202 `{task_id}`.
-- [ ] Commit: `feat: catalog endpoints`
+- [x] `GET /courses` → список из `courses`.
+- [x] `GET /courses/{course_id}` → уроки + для каждого: `has_transcript` (EXISTS transcripts), `questions_count`.
+- [x] `GET /lessons/{lesson_id}` → `{title, transcript, questions: [{question, answers, llm_answer_index}]}`. Публично (auth всё равно требуем — юзер телеграмный, но кредиты не нужны).
+- [x] `POST /lessons/{lesson_id}/transcribe` → если transcript есть — 200 сразу; иначе enqueue задача `type='transcribe'` → 202 `{task_id}`.
+- [x] Commit: `feat: catalog endpoints`
 
 ### Task 9: Watch + tasks endpoints
 
 **Files:** Create: `apps/api/routers/watch.py`
 
-- [ ] `POST /watch` body `{type: "lesson"|"course", id: str}`:
+- [x] `POST /watch` body `{type: "lesson"|"course", id: str}`:
   1. креды UniX заданы? нет → 409 `{error: "no_credentials"}`
   2. `get_balance` > 0? нет → 402 `{error: "no_credits"}`
   3. `enqueue(...)`; UniqueViolation → 409 `{error: "task_already_active"}`
   4. → 201 `{task_id}`
-- [ ] `GET /tasks/active` → активная задача юзера + `progress` (для поллинга из webapp).
-- [ ] `POST /tasks/{id}/cancel` → status queued→cancelled; running → выставить `progress.cancel_requested=true` (worker проверяет между уроками).
-- [ ] Commit: `feat: watch endpoints`
+- [x] `GET /tasks/active` → активная задача юзера + `progress` (для поллинга из webapp).
+- [x] `POST /tasks/{id}/cancel` → status queued→cancelled; running → выставить `progress.cancel_requested=true` (worker проверяет между уроками).
+- [x] Commit: `feat: watch endpoints`
 
 ### Task 10: Профиль + креды + referral + платежи-endpoints
 
 **Files:** Create: `apps/api/routers/me.py`, `apps/api/routers/payments.py`
 
-- [ ] `GET /me` → `{balance, unix_email_set: bool, history: последние ledger-записи, watched: завершённые задачи}`.
-- [ ] `PUT /me/unix-credentials` `{email, password}` → `encrypt()` → сохранить. `DELETE` → NULL.
-- [ ] `GET /referral` → `{link: f"https://t.me/{BOT_USERNAME}?startapp=ref_{tid}", invited: n, credited: m}`.
-- [ ] `POST /payments/stars/create-invoice` `{package}` → через Bot API `createInvoiceLink` (currency XTR) → `{invoice_url}`.
-- [ ] `POST /payments/tribute/webhook` — БЕЗ auth-dependency; проверка подписи `TRIBUTE_WEBHOOK_SECRET` (HMAC заголовка по документации Tribute); маппинг продукта → package; `record_payment_and_credit(provider='tribute', external_id=<id платежа Tribute>)`; уведомление юзеру через Bot API sendMessage. Всегда 200 при дубликате.
-- [ ] Тест: `test_tribute_webhook_duplicate_is_noop`.
-- [ ] Commit: `feat: me + payments endpoints`
+- [x] `GET /me` → `{balance, unix_email_set: bool, history: последние ledger-записи, watched: завершённые задачи}`.
+- [x] `PUT /me/unix-credentials` `{email, password}` → `encrypt()` → сохранить. `DELETE` → NULL.
+- [x] `GET /referral` → `{link: f"https://t.me/{BOT_USERNAME}?startapp=ref_{tid}", invited: n, credited: m}`.
+- [x] `POST /payments/stars/create-invoice` `{package}` → через Bot API `createInvoiceLink` (currency XTR) → `{invoice_url}`.
+- [x] `POST /payments/tribute/webhook` — БЕЗ auth-dependency; проверка подписи `TRIBUTE_WEBHOOK_SECRET` (HMAC заголовка по документации Tribute); маппинг продукта → package; `record_payment_and_credit(provider='tribute', external_id=<id платежа Tribute>)`; уведомление юзеру через Bot API sendMessage. Всегда 200 при дубликате.
+- [x] Тест: `test_tribute_webhook_duplicate_is_noop`.
+- [x] Commit: `feat: me + payments endpoints`
 
 ---
 
@@ -712,12 +712,12 @@ def make_callbacks(bot, chat_id: int):
 
 **Files:** Modify: `apps/worker/executor.py`
 
-- [ ] `run_course(task)`: уроки курса из `lessons` по `position`; пропуск уже пройденных (по `credit_ledger`/progress); для каждого:
+- [x] `run_course(task)`: уроки курса из `lessons` по `position`; пропуск уже пройденных (по `credit_ledger`/progress); для каждого:
   - баланс == 0 → `finish(done)`, progress `{stopped: "no_credits"}`, уведомление с кнопкой paywall
   - `progress.cancel_requested` → `finish(cancelled)`
   - урок: 2 ретрая → skipped (в progress), курс продолжается
   - после каждого урока `update_progress({current: i, total: n, scores: [...]})`
-- [ ] Commit: `feat: course batch execution`
+- [x] Commit: `feat: course batch execution`
 
 ### Task 13: Transcribe-задача + скрейп каталога
 

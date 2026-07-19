@@ -1,11 +1,18 @@
 """Tests for apps/worker/main.py's ``_requeue_unsupported``.
 
-Covers the Task 11 review fix: requeuing a claimed course/transcribe task
+Covers the Task 11 review fix: requeuing a claimed unsupported-type task
 back to 'queued' without bumping ``created_at`` leaves it at the FRONT of
 the FIFO queue (``claim_next`` orders ``BY created_at``), so it wins the
-claim race forever and starves any 'lesson' task queued behind it. The fix
+claim race forever and starves any runnable task queued behind it. The fix
 bumps ``created_at = now()`` (and clears ``started_at``) on requeue so the
 row rotates to the back of the queue.
+
+As of Task 12, ``course`` tasks have a real executor (``run_course``) and
+are no longer requeued by the main loop -- only ``transcribe`` (Task 13's
+scope) still goes through ``_requeue_unsupported`` there. This test still
+exercises ``_requeue_unsupported`` directly (a plain queue-repositioning
+unit, independent of which types the main loop currently routes to it) using
+a ``transcribe`` task, which remains unsupported today.
 
 Real local Postgres, same fixture pattern as the rest of the suite (see
 tests/conftest.py). ``main()`` itself loops forever, so this drives the
@@ -24,36 +31,37 @@ from packages.db import tasks
 pytestmark = pytest.mark.asyncio
 
 
-async def test_requeued_course_task_moves_to_back_of_fifo_queue(pool, make_user):
-    # Course and lesson tasks share the "one active task per user" unique
-    # index, so they need different users to both be enqueued at once.
-    course_user = await make_user()
+async def test_requeued_transcribe_task_moves_to_back_of_fifo_queue(pool, make_user):
+    # transcribe tasks aren't subject to the "one active task per user"
+    # unique index (that only covers lesson/course), but use separate users
+    # anyway to mirror the realistic multi-user queue this guards against.
+    transcribe_user = await make_user()
     lesson_user = await make_user()
 
-    # Course enqueued first -> older created_at -> front of the FIFO queue.
-    course_task_id = await tasks.enqueue(pool, course_user, "course", course_id="c1")
+    # Transcribe enqueued first -> older created_at -> front of the FIFO queue.
+    transcribe_task_id = await tasks.enqueue(pool, transcribe_user, "transcribe", lesson_id="l0")
     lesson_task_id = await tasks.enqueue(pool, lesson_user, "lesson", lesson_id="l1")
 
     # One iteration of the main loop: claim the oldest queued row (the
-    # course task, since it's first), see it's unsupported, requeue it.
+    # transcribe task, since it's first), see it's unsupported, requeue it.
     claimed = await tasks.claim_next(pool)
-    assert claimed["id"] == course_task_id
-    assert claimed["type"] == "course"
+    assert claimed["id"] == transcribe_task_id
+    assert claimed["type"] == "transcribe"
 
     await _requeue_unsupported(pool, claimed)
 
-    requeued = await tasks.get_task(pool, course_task_id)
+    requeued = await tasks.get_task(pool, transcribe_task_id)
     assert requeued["status"] == "queued"
     assert requeued["started_at"] is None
 
-    # The lesson task must now be claimable BEFORE the course task is
-    # re-claimed again -- i.e. the requeued course task's created_at moved
-    # to the back of the FIFO queue.
+    # The lesson task must now be claimable BEFORE the transcribe task is
+    # re-claimed again -- i.e. the requeued transcribe task's created_at
+    # moved to the back of the FIFO queue.
     next_claimed = await tasks.claim_next(pool)
     assert next_claimed["id"] == lesson_task_id
     assert next_claimed["type"] == "lesson"
 
-    # And the course task is still sitting there queued, not starved-out
-    # forever, just no longer at the front.
-    still_queued = await tasks.get_task(pool, course_task_id)
+    # And the transcribe task is still sitting there queued, not
+    # starved-out forever, just no longer at the front.
+    still_queued = await tasks.get_task(pool, transcribe_task_id)
     assert still_queued["status"] == "queued"
