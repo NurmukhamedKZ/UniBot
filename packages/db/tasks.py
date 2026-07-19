@@ -116,6 +116,49 @@ async def update_progress(pool_or_conn, task_id, progress: dict) -> None:
     )
 
 
+async def record_lesson_completion(
+    pool_or_conn, user_id, lesson_id: str, course_id: str | None = None
+):
+    """Insert a completed, non-claimable ``watch_tasks`` marker row for one lesson.
+
+    Used by ``run_course`` (apps/worker/executor.py, Task 12 review fix) so
+    each course-watched lesson gets its own ``lesson_id``-bearing
+    ``watch_tasks`` row -- the SAME shape ``catalog.get_watched_lesson_ids``'s
+    join already expects for a ``run_lesson``-produced watch. A course task
+    row itself has ``lesson_id = NULL`` (only ``course_id`` is set, correct
+    per schema for a course-type task) -- so without a marker row like this,
+    a course-driven watch is architecturally invisible to
+    ``get_watched_lesson_ids``, and re-running the SAME course after topping
+    up credits would re-watch and re-charge lessons already paid for in a
+    prior run (the exact bug this function fixes).
+
+    Inserted directly as ``status='done'`` (never ``'queued'``) so it:
+      - is NEVER picked up by ``claim_next`` (only selects ``status='queued'``);
+      - is NEVER returned by ``GET /tasks/active`` (only ``status IN
+        ('queued','running')``);
+      - does NOT trip ``idx_watch_tasks_one_active_per_user`` (that partial
+        index only covers rows with ``status IN ('queued','running')``).
+    i.e. this is purely a completion record for ``get_watched_lesson_ids`` to
+    join against -- not a real queue entry, and it can't collide with the
+    course task's own "one active task per user" slot.
+
+    ``pool_or_conn`` accepts either an ``asyncpg.Pool`` or an
+    ``asyncpg.Connection`` so the caller can insert this in the SAME
+    transaction as the matching ``credit_ledger`` debit (same pattern as
+    ``finish``/``ledger.add_entry``).
+    """
+    return await pool_or_conn.fetchval(
+        """
+        INSERT INTO watch_tasks (user_id, type, lesson_id, course_id, status, started_at, finished_at)
+        VALUES ($1, 'lesson', $2, $3, 'done', now(), now())
+        RETURNING id
+        """,
+        user_id,
+        lesson_id,
+        course_id,
+    )
+
+
 async def get_active_task(pool: asyncpg.Pool, user_id) -> asyncpg.Record | None:
     """Return the user's active (queued/running) lesson/course task, if any.
 

@@ -328,8 +328,18 @@ async def run_course(pool, bot, task) -> None:
     order (``catalog.get_course_lessons``), skipping any the user has
     already been credited for (``catalog.get_watched_lesson_ids`` -- a
     lesson counts as watched via a ``credit_ledger`` reason='watch' row
-    whose ``task_id`` points at a ``watch_tasks`` row with that lesson_id;
-    this also makes a re-run of a partially-completed course resumable).
+    whose ``task_id`` points at a ``watch_tasks`` row with that lesson_id).
+    This makes a re-run of a partially-completed course resumable ACROSS
+    separate course-task runs (e.g. the "topped up, tapped watch-course
+    again after a no_credits stop" flow): each successfully-watched lesson
+    gets its own per-lesson completion marker row (see
+    ``tasks.record_lesson_completion``) rather than being recorded only
+    against this run's own course-task id, so a later course-task run for
+    the same user finds it via the same lesson_id-based join. (This does NOT
+    cover every conceivable resumability case -- e.g. a lesson watched via a
+    DIFFERENT in-progress course task that never reaches ``finish`` is not
+    specially reconciled -- but the documented "top up and re-run" flow is
+    correctly resumable.)
 
     For each remaining lesson, in order:
       1. Re-read the task's ``progress`` and check ``cancel_requested`` --
@@ -347,10 +357,16 @@ async def run_course(pool, bot, task) -> None:
          instance is reused across all lessons in the course -- it holds no
          lesson-specific state; a fresh browser+login happens per attempt
          inside ``_watch_once`` regardless).
-      4. Success -> debit 1 credit (reason='watch', task_id=this course
-         task's id -- same shape ``get_watched_lesson_ids`` reads back for
-         resumability) and record a referral bonus check, same as
-         ``run_lesson``. Failure after retries (including a terminal
+      4. Success -> create a per-lesson completion marker row
+         (``tasks.record_lesson_completion``: a ``watch_tasks`` row with
+         ``type='lesson'``, ``status='done'``, this ``lesson_id`` set) and
+         debit 1 credit against THAT marker row's id (reason='watch',
+         NOT this course task's own id -- a course task row has
+         ``lesson_id = NULL``, which is invisible to
+         ``get_watched_lesson_ids``'s join) so the watch is visible to a
+         LATER, separate course-task run for the same user+course. Also
+         records a referral bonus check, same as ``run_lesson``. Failure
+         after retries (including a terminal
          low-score) -> record the lesson as ``"skipped"`` in progress and
          move on to the next lesson WITHOUT failing the course task (per
          docs/plan.md: "урок: 2 ретрая → skipped (в progress), курс
@@ -438,7 +454,19 @@ async def run_course(pool, bot, task) -> None:
         attempt = await _attempt_lesson(watcher, email, password, lesson_id, task_id)
 
         if attempt.success:
-            await ledger.add_entry(pool, user_id, delta=-1, reason="watch", task_id=task_id)
+            # Debit against a per-lesson completion marker row (NOT this
+            # course task's own id) so catalog.get_watched_lesson_ids's
+            # existing lesson_id-based join can see this watch across
+            # different course-task runs -- see tasks.record_lesson_completion
+            # for why a plain course-task-id debit is invisible to it.
+            async with pool.acquire() as conn:
+                async with conn.transaction():
+                    lesson_task_id = await tasks.record_lesson_completion(
+                        conn, user_id, lesson_id, course_id
+                    )
+                    await ledger.add_entry(
+                        conn, user_id, delta=-1, reason="watch", task_id=lesson_task_id
+                    )
             scores.append({"lesson_id": lesson_id, "status": "done", "result": attempt.result})
 
             referrer_id = await referrals.credit_if_first_watch(pool, user_id)

@@ -213,7 +213,20 @@ async def test_full_course_success_debits_n_credits_and_marks_done(pool, make_us
         "SELECT * FROM credit_ledger WHERE user_id = $1 AND reason = 'watch'", user_id
     )
     assert len(watch_rows) == 3
-    assert {r["task_id"] for r in watch_rows} == {task["id"]}
+    # Each watch is debited against its own per-lesson completion marker row
+    # (tasks.record_lesson_completion), NOT the course task's own id -- that's
+    # what makes the lesson visible to get_watched_lesson_ids across separate
+    # course-task runs (see the review-fix test below).
+    assert task["id"] not in {r["task_id"] for r in watch_rows}
+    marker_rows = await pool.fetch(
+        "SELECT id, lesson_id, type, status FROM watch_tasks WHERE id = ANY($1::uuid[])",
+        [r["task_id"] for r in watch_rows],
+    )
+    assert {(r["lesson_id"], r["type"], r["status"]) for r in marker_rows} == {
+        ("l1", "lesson", "done"),
+        ("l2", "lesson", "done"),
+        ("l3", "lesson", "done"),
+    }
 
 
 async def test_already_watched_lessons_are_skipped(pool, make_user):
@@ -276,8 +289,11 @@ async def test_zero_credit_stop_mid_course(pool, make_user):
         "SELECT * FROM credit_ledger WHERE user_id = $1 AND reason = 'watch'", user_id
     )
     assert len(watch_rows) == 2
-    watched_lessons = {row["task_id"] for row in watch_rows}
-    assert watched_lessons == {task["id"]}
+    # Debited against per-lesson completion markers, not the course task id
+    # (see test_full_course_success_debits_n_credits_and_marks_done).
+    assert task["id"] not in {row["task_id"] for row in watch_rows}
+    watched_ids = await catalog.get_watched_lesson_ids(pool, user_id)
+    assert watched_ids == {"l1", "l2"}
 
     # l3/l4/l5 never touched the browser layer
     assert "l3" not in FakeUniXWatcher.call_counts
@@ -359,3 +375,93 @@ async def test_cancel_mid_course(pool, make_user):
     assert "l3" not in FakeUniXWatcher.call_counts
 
     assert any("отменён" in text for _, text in bot.sent)
+
+
+async def test_course_rerun_after_topup_does_not_recharge_already_watched_lessons(
+    pool, make_user
+):
+    """Review-fix regression test (Task 12 finding: course-watched lessons
+    left no recoverable per-lesson trace, so re-running a course after
+    topping up credits re-charged already-watched lessons).
+
+    Scenario: a 5-lesson course, user starts with exactly 2 credits. Run #1
+    watches l1/l2, hits zero balance, stops with progress.stopped ==
+    "no_credits" (a normal 'done' outcome, per docs/plan.md). User tops up
+    3 more credits and taps "Смотреть весь курс" again -- a BRAND NEW course
+    task for the SAME course. Run #2 must skip l1/l2 entirely (no re-watch,
+    no re-charge) and only process l3/l4/l5.
+    """
+    user_id = await _make_user_with_credentials(pool, make_user)
+    await ledger.add_entry(pool, user_id, delta=2, reason="bonus")
+    await _make_course(pool, "c6", ["l1", "l2", "l3", "l4", "l5"])
+
+    # --- Run #1: stops at zero credits after l1, l2 ---
+    task1 = await _claim_course_task(pool, user_id, "c6")
+    FakeUniXWatcher.results = {
+        "l1": "5/5 баллов",
+        "l2": "5/5 баллов",
+        "l3": "5/5 баллов",
+        "l4": "5/5 баллов",
+        "l5": "5/5 баллов",
+    }
+    bot1 = FakeBot()
+    await executor.run_course(pool, bot1, task1)
+
+    balance_after_run1 = await ledger.get_balance(pool, user_id)
+    assert balance_after_run1 == 0
+
+    finished1 = await tasks.get_task(pool, task1["id"])
+    assert finished1["status"] == "done"
+    progress1 = executor._load_progress(finished1)
+    assert progress1["stopped"] == "no_credits"
+    assert {s["lesson_id"] for s in progress1["scores"] if s["status"] == "done"} == {
+        "l1",
+        "l2",
+    }
+    assert "l3" not in FakeUniXWatcher.call_counts
+    assert "l4" not in FakeUniXWatcher.call_counts
+    assert "l5" not in FakeUniXWatcher.call_counts
+
+    # --- User tops up ---
+    await ledger.add_entry(pool, user_id, delta=3, reason="purchase")
+    assert await ledger.get_balance(pool, user_id) == 3
+
+    # --- Run #2: brand new course task for the SAME course + user ---
+    FakeUniXWatcher.call_counts = {}  # reset call tracking for run #2
+    task2 = await _claim_course_task(pool, user_id, "c6")
+    assert task2["id"] != task1["id"]
+
+    bot2 = FakeBot()
+    await executor.run_course(pool, bot2, task2)
+
+    # l1/l2 must NOT be re-watched: no new watch_unix calls for them in run #2
+    assert "l1" not in FakeUniXWatcher.call_counts
+    assert "l2" not in FakeUniXWatcher.call_counts
+    # l3/l4/l5 ARE processed in run #2
+    assert FakeUniXWatcher.call_counts.get("l3") == 1
+    assert FakeUniXWatcher.call_counts.get("l4") == 1
+    assert FakeUniXWatcher.call_counts.get("l5") == 1
+
+    # Exactly 3 credits spent total in run #2 (l3, l4, l5) -- l1/l2 NOT
+    # re-charged, so balance goes from 3 straight to 0, not negative.
+    balance_after_run2 = await ledger.get_balance(pool, user_id)
+    assert balance_after_run2 == 0
+
+    finished2 = await tasks.get_task(pool, task2["id"])
+    assert finished2["status"] == "done"
+    progress2 = executor._load_progress(finished2)
+    assert progress2["total"] == 3  # only l3, l4, l5 counted as "remaining"
+    assert {s["lesson_id"] for s in progress2["scores"]} == {"l3", "l4", "l5"}
+    assert all(s["status"] == "done" for s in progress2["scores"])
+
+    # Total credits ever debited for 'watch' across BOTH runs == 5 (once per
+    # lesson, ever) -- the core invariant this fix protects.
+    all_watch_rows = await pool.fetch(
+        "SELECT * FROM credit_ledger WHERE user_id = $1 AND reason = 'watch'", user_id
+    )
+    assert len(all_watch_rows) == 5
+
+    # And get_watched_lesson_ids now reports all 5 lessons watched, visible
+    # across both course-task rows.
+    watched_ids = await catalog.get_watched_lesson_ids(pool, user_id)
+    assert watched_ids == {"l1", "l2", "l3", "l4", "l5"}

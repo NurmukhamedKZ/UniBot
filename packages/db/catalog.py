@@ -150,9 +150,17 @@ async def get_watched_lesson_ids(pool: asyncpg.Pool, user_id) -> set[str]:
     A lesson counts as watched if there is a ``credit_ledger`` row with
     ``reason='watch'`` for this user whose ``task_id`` points to a
     ``watch_tasks`` row carrying that ``lesson_id`` — i.e. a completed,
-    credited ``run_lesson`` (or a prior ``run_course`` lesson-attempt: both
-    debit through the same ``reason='watch'`` ``credit_ledger`` insert, see
-    ``run_lesson``/``run_course``). Not scoped to a single course_id since a
+    credited ``run_lesson``, OR a prior ``run_course`` lesson-attempt.
+    Note a course task's OWN ``watch_tasks`` row has ``lesson_id = NULL``
+    (only ``course_id`` is set — correct per schema for a course-type task),
+    so a course-driven watch would be invisible to this join if debited
+    against that row's id. Instead ``run_course`` debits each successfully
+    watched lesson against a separate, purpose-made per-lesson completion
+    marker row (``tasks.record_lesson_completion``: ``type='lesson'``,
+    ``status='done'``, ``lesson_id`` set) — THAT row is what this join
+    matches on, which is what makes a lesson watched via a course batch
+    correctly skip-and-not-recharge on a LATER, separate course-task run for
+    the same user+course. Not scoped to a single course_id since a
     lesson_id is only ever watched once regardless of which course listing
     it's looked up through.
     """
