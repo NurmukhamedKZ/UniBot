@@ -799,10 +799,10 @@ async def handle_successful_payment(message: Message):
 
 **Files:** Create: `apps/webapp/` (vite scaffold)
 
-- [ ] `npm create vite@latest webapp -- --template react-ts`, `+ tailwindcss @twa-dev/sdk react-router-dom @tanstack/react-query`.
-- [ ] `src/api.ts`: fetch-обёртка, всегда шлёт `X-Telegram-Init-Data: WebApp.initData`; обработка 402 (→ paywall) и 409 no_credentials (→ модалка кредов).
-- [ ] Тема: тёмная, UniX-подобная; CSS-переменные из `WebApp.themeParams`; `WebApp.expand()` на старте.
-- [ ] Commit: `feat: webapp scaffold`
+- [x] `npm create vite@latest webapp -- --template react-ts`, `+ tailwindcss @twa-dev/sdk react-router-dom @tanstack/react-query`.
+- [x] `src/api.ts`: fetch-обёртка, всегда шлёт `X-Telegram-Init-Data: WebApp.initData`; обработка 402 (→ paywall) и 409 no_credentials (→ модалка кредов).
+- [x] Тема: тёмная, UniX-подобная; CSS-переменные из `WebApp.themeParams`; `WebApp.expand()` на старте.
+- [x] Commit: `feat: webapp scaffold`
 
 ### Task 16: Экраны
 

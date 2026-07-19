@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+/*
+ * Dark, UniX-adjacent theme. Values below are fallback defaults for
+ * outside-Telegram dev/preview; src/telegram.ts overwrites these same
+ * custom properties from WebApp.themeParams once running inside Telegram,
+ * so both light and dark Telegram themes render correctly without a
+ * separate light stylesheet.
+ */
+:root {
+  --tg-bg: #0f1115;
+  --tg-secondary-bg: #16181f;
+  --tg-text: #f3f4f6;
+  --tg-hint: #8b8f9a;
+  --tg-link: #7aa2ff;
+  --tg-button: #5b8def;
+  --tg-button-text: #ffffff;
+  --tg-accent: #7c5cff;
+  --tg-border: #262a35;
+
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--tg-bg);
+  color: var(--tg-text);
+  font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
