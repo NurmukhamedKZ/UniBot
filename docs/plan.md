@@ -744,8 +744,8 @@ def make_callbacks(bot, chat_id: int):
 
 **Files:** Create: `apps/bot/main.py`
 
-- [ ] `/start`: приветствие + inline-кнопка `WebAppInfo(url=WEBAPP_URL)`. Deep link `start=ref_<tid>` тоже регистрирует referral (дубль к startapp — кто каким путём зашёл).
-- [ ] Меню-кнопка чата: `set_chat_menu_button` → WebApp.
+- [x] `/start`: приветствие + inline-кнопка `WebAppInfo(url=WEBAPP_URL)`. Deep link `start=ref_<tid>` тоже регистрирует referral (дубль к startapp — кто каким путём зашёл).
+- [x] Меню-кнопка чата: `set_chat_menu_button` → WebApp.
 - [ ] Stars — рабочий флоу из прода старого бота (детали, которые легко
   ошибиться): валюта `XTR`, `provider_token=""` (пустая строка!), сумма в
   Stars без умножения. Обработчики:
@@ -788,8 +788,8 @@ async def handle_successful_payment(message: Message):
     # → сообщение с новым балансом + уведомление админу (ADMIN_ID):
     #   username, пакет, сумма Stars, charge_id (нужен для возвратов)
 ```
-- [ ] Всё остальное (любой текст) → «Открой приложение 👇» + кнопка.
-- [ ] Commit: `feat: thin bot`
+- [x] Всё остальное (любой текст) → «Открой приложение 👇» + кнопка.
+- [x] Commit: `feat: thin bot`
 
 ---
 
