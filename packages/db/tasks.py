@@ -159,6 +159,31 @@ async def merge_progress(pool_or_conn, task_id, patch: dict) -> None:
     )
 
 
+async def get_completed_tasks(pool: asyncpg.Pool, user_id, limit: int) -> list[dict]:
+    """Return the user's most recently finished watch tasks, newest first.
+
+    Used by ``GET /me`` for the "watched" list. ``id`` is stringified (it's
+    a UUID) so the result is directly JSON-serializable.
+    """
+    rows = await pool.fetch(
+        """
+        SELECT id, type, lesson_id, course_id, status, finished_at, created_at
+        FROM watch_tasks
+        WHERE user_id = $1 AND status = 'done'
+        ORDER BY finished_at DESC NULLS LAST
+        LIMIT $2
+        """,
+        user_id,
+        limit,
+    )
+    out = []
+    for row in rows:
+        d = dict(row)
+        d["id"] = str(d["id"])
+        out.append(d)
+    return out
+
+
 async def requeue_stale_running(pool: asyncpg.Pool) -> int:
     """Reset any ``running`` task back to ``queued``.
 

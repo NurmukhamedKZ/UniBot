@@ -11,6 +11,15 @@ from __future__ import annotations
 import os
 import uuid
 
+# Must run before any import (direct or transitive) of packages.shared.crypto,
+# which raises RuntimeError at import time if ENCRYPTION_KEY isn't set. Tests
+# (e.g. tests/test_me.py) import it at module scope, so without this the
+# entire suite fails to collect unless ENCRYPTION_KEY is exported manually
+# first. setdefault() so a real deployment/CI-provided key still wins.
+from cryptography.fernet import Fernet
+
+os.environ.setdefault("ENCRYPTION_KEY", Fernet.generate_key().decode())
+
 import asyncpg
 import pytest
 import pytest_asyncio

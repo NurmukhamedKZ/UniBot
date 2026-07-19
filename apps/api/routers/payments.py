@@ -186,6 +186,15 @@ async def tribute_webhook(request: Request):
     except ValueError:
         raise HTTPException(400, "invalid JSON body")
 
+    if not isinstance(payload, dict):
+        # Signature was valid but the body isn't a JSON object (e.g. a list
+        # or scalar), so the mapping/resolution helpers below (which call
+        # ``payload.get(...)``) can't operate on it. Same graceful 200 path
+        # as the other malformed/unresolvable-payload cases below, rather
+        # than an unhandled AttributeError -> 500.
+        logger.error("tribute webhook: payload is not a JSON object (type=%s)", type(payload).__name__)
+        return JSONResponse(status_code=200, content={"ok": False, "reason": "malformed_payload"})
+
     package = _map_tribute_product_to_package(payload)
     external_id = payload.get("id") or payload.get("payment_id") or payload.get("external_id")
     telegram_id = _resolve_user_reference(payload)

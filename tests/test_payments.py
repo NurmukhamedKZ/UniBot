@@ -98,7 +98,16 @@ def _sign(body: bytes, secret: str = TRIBUTE_SECRET) -> str:
 
 
 class _FakeCreateInvoiceLinkClient:
-    """Stands in for httpx.AsyncClient, faking a successful Bot API response."""
+    """Stands in for httpx.AsyncClient, faking a successful Bot API response.
+
+    Captures the request body/params sent to ``createInvoiceLink`` on
+    ``self.captured`` (class-level, since the router constructs a fresh
+    instance per call via ``async with httpx.AsyncClient() as client``) so
+    tests can assert the exact Stars invariants: XTR currency, empty-string
+    provider_token, and an unmultiplied stars price.
+    """
+
+    captured: dict | None = None
 
     def __init__(self, *args, **kwargs):
         pass
@@ -111,6 +120,7 @@ class _FakeCreateInvoiceLinkClient:
 
     async def post(self, url, json=None, timeout=None):
         assert "createInvoiceLink" in url
+        type(self).captured = json
         request = httpx.Request("POST", url)
         return httpx.Response(
             200,
@@ -124,6 +134,7 @@ async def test_stars_create_invoice(pool, monkeypatch):
     monkeypatch.setattr(
         "apps.api.routers.payments.TELEGRAM_TOKEN", "123456:test-bot-token"
     )
+    _FakeCreateInvoiceLinkClient.captured = None
     monkeypatch.setattr(httpx, "AsyncClient", _FakeCreateInvoiceLinkClient)
 
     app = _make_app(pool)
@@ -143,6 +154,17 @@ async def test_stars_create_invoice(pool, monkeypatch):
 
     assert resp.status_code == 200
     assert resp.json() == {"invoice_url": "https://t.me/invoice/fake123"}
+
+    # Lock in the Stars invariants: XTR currency, empty-string provider_token
+    # (Stars payments require no real payment provider), and the price amount
+    # matching PACKAGES["S"]["stars"] exactly (no multiplication/conversion).
+    from packages.shared.config import PACKAGES
+
+    sent = _FakeCreateInvoiceLinkClient.captured
+    assert sent is not None
+    assert sent["currency"] == "XTR"
+    assert sent["provider_token"] == ""
+    assert sent["prices"] == [{"label": "Пакет S", "amount": PACKAGES["S"]["stars"]}]
 
 
 async def test_stars_create_invoice_rejects_unknown_package(pool, monkeypatch):
@@ -241,6 +263,30 @@ async def test_tribute_webhook_bad_signature_rejected(pool, make_user):
         "SELECT id FROM users WHERE telegram_id = $1", telegram_id
     )
     assert await ledger.get_balance(pool, user_id) == 0  # no credit applied
+
+
+async def test_tribute_webhook_non_dict_payload_is_graceful(pool, make_user):
+    """A JSON list/scalar body (not an object) must not crash the handler.
+
+    ``_map_tribute_product_to_package``/``_resolve_user_reference`` call
+    ``payload.get(...)``, which doesn't exist on list/scalar JSON values --
+    without the isinstance guard this raised an unhandled AttributeError
+    (500) instead of the graceful 200 path used for other malformed
+    payloads.
+    """
+    body = json.dumps(["not", "an", "object"]).encode()
+    headers = {
+        TRIBUTE_SIGNATURE_HEADER: _sign(body),
+        "Content-Type": "application/json",
+    }
+
+    app = _make_app(pool)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post("/payments/tribute/webhook", content=body, headers=headers)
+
+    assert resp.status_code == 200
+    assert resp.json() == {"ok": False, "reason": "malformed_payload"}
 
 
 async def test_tribute_webhook_missing_signature_header_rejected(pool, make_user):

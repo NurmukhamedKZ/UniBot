@@ -13,6 +13,34 @@ async def get_balance(pool: asyncpg.Pool, user_id) -> int:
     return int(value)
 
 
+async def get_recent_entries(pool: asyncpg.Pool, user_id, limit: int) -> list[dict]:
+    """Return the user's most recent ledger entries, newest first.
+
+    Used by ``GET /me`` for the account history list. ``payment_id``/
+    ``task_id`` are stringified (they're UUIDs) so the result is directly
+    JSON-serializable.
+    """
+    rows = await pool.fetch(
+        """
+        SELECT id, delta, reason, payment_id, task_id, created_at
+        FROM credit_ledger
+        WHERE user_id = $1
+        ORDER BY created_at DESC
+        LIMIT $2
+        """,
+        user_id,
+        limit,
+    )
+    out = []
+    for row in rows:
+        d = dict(row)
+        d["id"] = str(d["id"])
+        d["payment_id"] = str(d["payment_id"]) if d["payment_id"] else None
+        d["task_id"] = str(d["task_id"]) if d["task_id"] else None
+        out.append(d)
+    return out
+
+
 async def add_entry(
     pool_or_conn,
     user_id,
