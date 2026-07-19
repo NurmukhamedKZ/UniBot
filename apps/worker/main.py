@@ -43,21 +43,28 @@ async def _requeue_unsupported(pool, task) -> None:
     ``'running'`` (which ``requeue_stale_running`` would only recover after a
     full worker restart).
 
-    KNOWN LIMITATION for Task 12/13: because ``claim_next()`` always picks
-    the oldest ``'queued'`` row first (FIFO by ``created_at``), an
-    unsupported task sitting at the front of the queue will keep winning the
-    claim race against any ``'lesson'`` task queued after it -- it gets
-    claimed, immediately requeued, and claimed again on the next poll,
-    effectively starving lesson tasks behind it until ``run_course``/
-    ``run_transcribe`` land or the task is cancelled. Acceptable for this
-    task's scope per the Task 11 brief; Task 12/13 should either add a
-    ``type`` filter to ``claim_next()`` (it doesn't need one until an
-    unsupported type can actually be enqueued and this worker is the only
-    consumer -- true today) or land the missing executors promptly.
+    Bumps ``created_at = now()`` (and clears ``started_at``, matching
+    ``requeue_stale_running``'s convention in packages/db/tasks.py, since
+    the task never actually started running) when requeuing. Without this,
+    a requeued row keeps its original ``created_at`` and -- since
+    ``claim_next()`` orders ``BY created_at`` -- stays at the FRONT of the
+    FIFO queue, so it gets immediately re-claimed on every poll and
+    permanently starves any ``'lesson'`` task queued behind it. Bumping
+    ``created_at`` rotates it to the back of the queue instead, so
+    ``'lesson'`` tasks ahead of it get a turn. This is a Task-11-local
+    stopgap; Task 12/13 should land the real ``run_course``/``run_transcribe``
+    executors (a ``type`` filter on ``claim_next()`` itself is deliberately
+    NOT added here -- that's shared ground-truth code other tasks may need
+    unfiltered).
     """
-    await pool.execute("UPDATE watch_tasks SET status = 'queued' WHERE id = $1", task["id"])
+    await pool.execute(
+        "UPDATE watch_tasks SET status = 'queued', created_at = now(), started_at = NULL WHERE id = $1",
+        task["id"],
+    )
     logger.info(
-        "task %s (type=%s) requeued -- no executor for this type yet", task["id"], task["type"]
+        "task %s (type=%s) requeued to back of queue -- no executor for this type yet",
+        task["id"],
+        task["type"],
     )
 
 

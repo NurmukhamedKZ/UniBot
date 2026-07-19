@@ -285,6 +285,72 @@ async def test_unix_site_unavailable_is_distinct_failure_no_retry(pool, make_use
     assert not any("attempts" in text for _, text in bot.sent)
 
 
+async def test_error_result_string_is_treated_as_failure_not_success(pool, make_user):
+    """watch_unix can return a plain string like "Error: ..." (a parse
+    exception inside _get_test_result/_do_test) without raising -- that must
+    NOT be charged as a success. Both retry attempts get the same failure
+    result, so it exhausts retries like any other transient failure."""
+    user_id = await _make_user_with_credentials(pool, make_user)
+    await ledger.add_entry(pool, user_id, delta=2, reason="bonus")
+    task = await _claim_lesson_task(pool, user_id)
+
+    FakeUniXWatcher.results = ["Error: something", "Error: something"]
+
+    bot = FakeBot()
+    await executor.run_lesson(pool, bot, task)
+
+    assert FakeUniXWatcher.call_count == 2
+
+    balance = await ledger.get_balance(pool, user_id)
+    assert balance == 2  # untouched -- no credit debit
+
+    finished = await tasks.get_task(pool, task["id"])
+    assert finished["status"] == "failed"
+    assert finished["error"] is not None
+
+    watch_rows = await pool.fetch(
+        "SELECT * FROM credit_ledger WHERE user_id = $1 AND reason = 'watch'", user_id
+    )
+    assert len(watch_rows) == 0
+
+    assert any("не списан" in text or "❌" in text for _, text in bot.sent)
+
+
+async def test_low_score_is_terminal_failure_not_charged_not_retried(pool, make_user):
+    """A genuinely low test score (below the 3.5 threshold, matching legacy
+    watch_unix_videos's score_int >= 3.5 check) is a real failed attempt --
+    not a success, and NOT worth retrying (retrying won't change the LLM's
+    answers), unlike a transient exception/error-string failure."""
+    user_id = await _make_user_with_credentials(pool, make_user)
+    await ledger.add_entry(pool, user_id, delta=2, reason="bonus")
+    task = await _claim_lesson_task(pool, user_id)
+
+    FakeUniXWatcher.results = ["1/5 баллов"]
+
+    bot = FakeBot()
+    await executor.run_lesson(pool, bot, task)
+
+    # NOT retried -- a low score is terminal, only one attempt consumed
+    assert FakeUniXWatcher.call_count == 1
+
+    balance = await ledger.get_balance(pool, user_id)
+    assert balance == 2  # untouched -- no credit debit
+
+    finished = await tasks.get_task(pool, task["id"])
+    assert finished["status"] == "failed"
+    assert finished["error"] is not None
+    assert "1/5" in finished["error"] or "не сдан" in finished["error"]
+
+    watch_rows = await pool.fetch(
+        "SELECT * FROM credit_ledger WHERE user_id = $1 AND reason = 'watch'", user_id
+    )
+    assert len(watch_rows) == 0
+
+    assert any(
+        "не сдан" in text or "не списан" in text or "❌" in text for _, text in bot.sent
+    )
+
+
 async def test_missing_credentials_fails_without_touching_credit(pool, make_user):
     user_id = await make_user()  # no set_unix_credentials call
     await ledger.add_entry(pool, user_id, delta=2, reason="bonus")

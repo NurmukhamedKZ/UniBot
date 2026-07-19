@@ -16,6 +16,7 @@ treats claimed course-type tasks in the meantime.
 from __future__ import annotations
 
 import logging
+import re
 
 from playwright.async_api import async_playwright
 
@@ -48,6 +49,31 @@ _VIEWPORT = {"width": 1280, "height": 720}
 MAX_ATTEMPTS = 2
 
 _UNIX_UNAVAILABLE_ERROR = "UniX недоступен"
+
+# Same threshold as the legacy ``watch_unix_videos`` (``score_int >= 3.5``):
+# a test result below this is a genuine failed attempt, not a success, even
+# though ``watch_unix`` returns a non-None string for it.
+MIN_PASSING_SCORE = 3.5
+
+_SCORE_RE = re.compile(r"\s*(\d+(?:\.\d+)?)")
+
+
+def _parse_score(result: str) -> float | None:
+    """Extract the numerator score out of a ``watch_unix`` result string.
+
+    Per docs/plan.md Task 11 the documented format is ``"N/5 баллов"``
+    (``_get_test_result`` in packages/core/unix_service.py builds it as
+    ``f"{score} {total}"`` from the two spans on the result page, e.g.
+    ``"5 5 баллов"``/``"1/5 баллов"`` depending on what the site renders) --
+    either way the leading number is the numerator we care about. Returns
+    ``None`` when the string doesn't start with a number at all (e.g. the
+    non-test result ``"video doesn't have test"``), in which case there is
+    no score to gate on and the result is treated as a plain success.
+    """
+    match = _SCORE_RE.match(result)
+    if match is None:
+        return None
+    return float(match.group(1))
 
 
 async def _notify(bot, chat_id: int, text: str) -> None:
@@ -92,15 +118,21 @@ async def run_lesson(pool, bot, task) -> None:
     with an error message; the credit is NOT touched. Either way, the task
     owner gets a final Bot API notification.
 
-    NOTE on what counts as "success": per the Task 11 brief, any non-``None``
-    result is treated as success. ``watch_unix`` can also return a string
-    like ``"Error: ..."`` on some internal failures (see the legacy
-    ``watch_unix_videos``, which specifically checks ``"Error" in result``
-    and treats it as a per-lesson failure, not a success) -- this executor
-    does NOT special-case that string here, matching the literal brief.
-    Distinguishing it would mean charging the credit only on a "real" score,
-    which may be worth revisiting in Task 12 when course batching needs the
-    same success/failure classification across many lessons.
+    NOTE on what counts as "success": a plain non-``None`` result is NOT
+    enough. ``watch_unix`` can return a string like ``"Error: ..."`` on some
+    internal failures (a parse exception inside ``_do_test``/
+    ``_get_test_result``), and it can also return a genuinely low test score
+    (e.g. ``"1/5 баллов"``) -- neither is a real success. Matching the
+    legacy ``watch_unix_videos`` classification (``"Error" in result`` =>
+    failure; ``score_int >= 3.5`` required for success), this executor:
+      - treats ``None``/an ``"Error" in result`` string the same as a raised
+        exception -- it consumes a retry attempt (``MAX_ATTEMPTS`` total);
+      - treats a parseable score below ``MIN_PASSING_SCORE`` as a terminal
+        failure -- NOT retried (retrying won't change the LLM's answers),
+        the task is marked ``failed`` with a clear "test not passed"
+        message and the credit is left untouched;
+      - anything else (a passing score, or a result with no score at all
+        like ``"video doesn't have test"``) is a genuine success.
     """
     task_id = task["id"]
     user_id = task["user_id"]
@@ -137,12 +169,11 @@ async def run_lesson(pool, bot, task) -> None:
     result: str | None = None
     last_error: Exception | None = None
     site_unavailable = False
+    low_score_result: str | None = None
 
     for attempt in range(1, MAX_ATTEMPTS + 1):
         try:
-            result = await _watch_once(watcher, email, password, lesson_id)
-            last_error = None
-            break
+            raw_result = await _watch_once(watcher, email, password, lesson_id)
         except UnixSiteUnavailableError as exc:
             # Distinct failure path: no retry, no conflation with a generic
             # "failed after N attempts" message (per docs/plan.md Task 11).
@@ -161,6 +192,34 @@ async def run_lesson(pool, bot, task) -> None:
             )
             result = None
             continue
+
+        if raw_result is None or "Error" in raw_result:
+            # Non-fatal failure string from watch_unix (parse exception
+            # inside _do_test/_get_test_result, or a None return) -- treat
+            # exactly like a raised exception: consumes a retry attempt.
+            last_error = RuntimeError(raw_result if raw_result else "watch_unix returned no result")
+            logger.warning(
+                "run_lesson attempt %d/%d got a failure result for task=%s lesson=%s: %s",
+                attempt,
+                MAX_ATTEMPTS,
+                task_id,
+                lesson_id,
+                raw_result,
+            )
+            result = None
+            continue
+
+        score = _parse_score(raw_result)
+        if score is not None and score < MIN_PASSING_SCORE:
+            # A genuine low score is a terminal failure for this lesson --
+            # retrying won't change the LLM's answers, so don't loop on it.
+            low_score_result = raw_result
+            result = None
+            break
+
+        result = raw_result
+        last_error = None
+        break
 
     if result is not None:
         async with pool.acquire() as conn:
@@ -181,7 +240,12 @@ async def run_lesson(pool, bot, task) -> None:
                 )
         return
 
-    if site_unavailable:
+    if low_score_result is not None:
+        error_message = f"не сдан тест: {low_score_result}"
+        user_message = (
+            f"❌ Урок #{lesson_id}: тест не сдан ({low_score_result}). Кредит не списан."
+        )
+    elif site_unavailable:
         error_message = _UNIX_UNAVAILABLE_ERROR
         user_message = (
             "⚠️ Сайт UniX сейчас недоступен. Попробуй позже — кредит не списан."
