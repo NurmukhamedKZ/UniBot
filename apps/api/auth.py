@@ -39,6 +39,12 @@ def validate_init_data(init_data: str, bot_token: str, max_age: int = 3600) -> d
     secret = hmac.new(b"WebAppData", bot_token.encode(), hashlib.sha256).digest()
     expected = hmac.new(secret, check_string.encode(), hashlib.sha256).hexdigest()
     if not hmac.compare_digest(expected, received_hash):
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "initData signature mismatch: raw_len=%d keys=%s expected=%s received=%s check_string=%r",
+            len(init_data), sorted(data.keys()), expected, received_hash, check_string,
+        )
         raise HTTPException(401, "bad initData signature")
     try:
         auth_date = int(data.get("auth_date", 0))
