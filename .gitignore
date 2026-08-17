@@ -15,3 +15,6 @@ docker-compose.override.yml
 
 # Node
 node_modules/
+
+# Vercel CLI project link
+.vercel
