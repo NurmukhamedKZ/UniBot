@@ -33,12 +33,12 @@ TRIBUTE_API_KEY = os.environ.get("TRIBUTE_API_KEY")
 TRIBUTE_WEBHOOK_SECRET = os.environ.get("TRIBUTE_WEBHOOK_SECRET")
 
 
-# Сетка «как у провайдера»: per-video цена падает 149 → 50 → 30 ₸,
-# разрыв M→L всего 500 ₸ — толкает к L. S = decoy.
+# Per-video цена падает 75 → 70 → 45 ₸. M — decoy (почти как S за видео),
+# разрыв M→L всего 1700 ₸ за 2.5x больше видео — толкает к L.
 PACKAGES = {
-    "S": {"credits": 10, "price_kzt": 1490, "stars": 250},
-    "M": {"credits": 50, "price_kzt": 2490, "stars": 400},
-    "L": {"credits": 100, "price_kzt": 2990, "stars": 500},
+    "S": {"credits": 8, "price_kzt": 600, "stars": 100},
+    "M": {"credits": 40, "price_kzt": 2800, "stars": 470},
+    "L": {"credits": 100, "price_kzt": 4500, "stars": 750},
 }
 
 WELCOME_CREDITS = 2  # бонус новому юзеру

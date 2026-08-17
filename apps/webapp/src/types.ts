@@ -107,7 +107,7 @@ export interface PackageInfo {
 
 /** packages/shared/config.py PACKAGES -- no endpoint exposes these, hardcode per brief. */
 export const PACKAGES: Record<PackageId, PackageInfo> = {
-  S: { credits: 10, price_kzt: 1490, stars: 250 },
-  M: { credits: 50, price_kzt: 2490, stars: 400 },
-  L: { credits: 100, price_kzt: 2990, stars: 500 },
+  S: { credits: 8, price_kzt: 600, stars: 100 },
+  M: { credits: 40, price_kzt: 2800, stars: 470 },
+  L: { credits: 100, price_kzt: 4500, stars: 750 },
 }

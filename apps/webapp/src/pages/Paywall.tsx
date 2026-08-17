@@ -19,6 +19,7 @@ export function Paywall() {
   const [busy, setBusy] = useState<PackageId | null>(null)
   const [error, setError] = useState<string | null>(null)
   const sPerVideo = perVideoPrice('S')
+  const lDiscountPct = Math.round((1 - perVideoPrice('L') / sPerVideo) * 100)
 
   function payTribute(id: PackageId) {
     const link = TRIBUTE_LINKS[id]
@@ -69,7 +70,7 @@ export function Paywall() {
             >
               {isL && (
                 <span className="absolute -top-3 left-4 rounded-full bg-[var(--tg-accent)] px-2 py-0.5 text-xs font-semibold text-white">
-                  Лучший выбор · выгоднее в 5 раз
+                  Лучший выбор · дешевле на {lDiscountPct}%
                 </span>
               )}
 
