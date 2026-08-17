@@ -1,4 +1,5 @@
 import WebApp from '@twa-dev/sdk'
+import { retrieveRawInitData } from '@telegram-apps/bridge'
 
 /**
  * ThemeParams field -> our --tg-* CSS custom property (see src/index.css).
@@ -52,16 +53,17 @@ export function initTelegramWebApp(): void {
 }
 
 /**
- * @twa-dev/sdk bundles its own reimplementation of telegram-web-app.js that
- * parses `location.hash` at module-import time -- in practice (Telegram
- * Desktop 9.6 at least) this leaves `WebApp.initData`/`.version`/`.platform`
- * all `undefined`, not even falling back to the library's own defaults.
- * `location.hash` itself reliably carries the real `tgWebAppData` Telegram
- * put there, so read it directly instead of trusting the SDK's getter.
+ * @twa-dev/sdk (unmaintained, last published mid-2025) bundles its own stale
+ * reimplementation of telegram-web-app.js that leaves `WebApp.initData`
+ * undefined on current Telegram clients. `@telegram-apps/bridge` is the
+ * actively maintained package and its `retrieveRawInitData` tries multiple
+ * sources in order (location.href, then the Performance Navigation Timing
+ * API entry -- which keeps the original launch URL even after some library
+ * mutates `location.hash` via `history.replaceState` -- then localStorage
+ * for reloads), which is what actually makes this reliable.
  */
 export function getInitData(): string {
-  const params = new URLSearchParams(window.location.hash.replace(/^#/, ''))
-  return params.get('tgWebAppData') ?? WebApp.initData ?? ''
+  return retrieveRawInitData() ?? ''
 }
 
 export { WebApp }
