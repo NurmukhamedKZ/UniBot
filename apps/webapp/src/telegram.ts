@@ -51,4 +51,17 @@ export function initTelegramWebApp(): void {
   tryInit()
 }
 
+/**
+ * @twa-dev/sdk bundles its own reimplementation of telegram-web-app.js that
+ * parses `location.hash` at module-import time -- in practice (Telegram
+ * Desktop 9.6 at least) this leaves `WebApp.initData`/`.version`/`.platform`
+ * all `undefined`, not even falling back to the library's own defaults.
+ * `location.hash` itself reliably carries the real `tgWebAppData` Telegram
+ * put there, so read it directly instead of trusting the SDK's getter.
+ */
+export function getInitData(): string {
+  const params = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+  return params.get('tgWebAppData') ?? WebApp.initData ?? ''
+}
+
 export { WebApp }

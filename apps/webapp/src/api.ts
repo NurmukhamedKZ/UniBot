@@ -1,4 +1,4 @@
-import { WebApp } from './telegram'
+import { getInitData } from './telegram'
 
 /**
  * Thrown for any non-2xx response. `body` is the parsed JSON error payload
@@ -61,7 +61,7 @@ const API_BASE = import.meta.env.VITE_API_URL ?? ''
 
 export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers)
-  headers.set('X-Telegram-Init-Data', WebApp.initData)
+  headers.set('X-Telegram-Init-Data', getInitData())
   if (init.body && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json')
   }
