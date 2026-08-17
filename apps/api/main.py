@@ -8,9 +8,12 @@ dependency (apps/api/auth.py) so later routers can depend on it.
 
 from __future__ import annotations
 
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+
+logging.basicConfig(level=logging.INFO)
 from fastapi.middleware.cors import CORSMiddleware
 
 from apps.api.routers.catalog import router as catalog_router
