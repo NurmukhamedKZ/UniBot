@@ -124,7 +124,24 @@ async def tribute_webhook(request: Request):
         # bigger risk than Tribute retry-storming a 401. So: 401 here, 200
         # is reserved for "valid signature, whether or not it was a
         # duplicate/no-op".
-        logger.warning("tribute webhook: signature verification failed")
+        # ponytail: TEMP DEBUG -- hex vs base64 encoding of trbt-signature is
+        # unconfirmed by Tribute's docs. Logs the received header + both
+        # candidate encodings (never the API key itself) so a real Test
+        # Request delivery can be diagnosed. Remove once encoding is
+        # confirmed and _verify_tribute_signature is locked in.
+        if TRIBUTE_API_KEY:
+            import base64
+
+            digest = hmac.new(TRIBUTE_API_KEY.encode(), raw_body, hashlib.sha256)
+            logger.warning(
+                "tribute webhook: signature mismatch received=%r expected_hex=%s expected_b64=%s body=%r",
+                signature,
+                digest.hexdigest(),
+                base64.b64encode(digest.digest()).decode(),
+                raw_body[:500],
+            )
+        else:
+            logger.warning("tribute webhook: signature verification failed (TRIBUTE_API_KEY not set)")
         raise HTTPException(401, "invalid signature")
 
     try:
