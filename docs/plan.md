@@ -20,7 +20,7 @@
 - Данные старого бота не мигрируются.
 - Пакеты: S=10/1490₸/250⭐, M=50/2490₸/400⭐, L=100/2990₸/500⭐ (см. `packages/shared/config.py`).
 - Referral-бонус — после первого завершённого автопросмотра приглашённого.
-- Mini App требует HTTPS → домен `app.workkeldi.com` → A-запись на 109.199.125.111.
+- Mini App требует HTTPS → домен `api.workkeldi.com` → A-запись на 109.199.125.111.
 - VPS общий с otclick/Langfuse/ClickHouse: свободно ~3 GB RAM → swap 4G обязателен,
   ≤2 параллельных Chromium.
 
@@ -159,7 +159,7 @@ Telegram Mini App: автопросмотр лекций UniX (Playwright + LLM)
 - Кредит списывается только за успешно завершённый урок.
 - Запуск: docker compose up -d --build. Тесты: pytest tests/ -v.
 - Прод: Contabo VPS (общий с другими проектами), вход через хостовый nginx,
-  api на 127.0.0.1:8001. Домен: app.workkeldi.com.
+  api на 127.0.0.1:8001. Домен: api.workkeldi.com; фронтенд — на Vercel.
 ```
 
 - [x] `git init unibot`, создать структуру:
@@ -283,17 +283,21 @@ CMD ["uvicorn", "apps.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
 `Dockerfile.bot`: `CMD ["python", "-m", "apps.bot.main"]`.
 
 - [x] `nginx/unibot.conf` — server-блок для ХОСТОВОГО nginx (кладётся в
-  `/etc/nginx/sites-available/unibot` на VPS, симлинк в sites-enabled):
+  `/etc/nginx/sites-available/unibot` на VPS, симлинк в sites-enabled).
+  **Решение (2026-08-17): webapp хостится на Vercel, не на VPS.** Домен
+  `api.workkeldi.com` держит только API; nginx проксирует весь путь на
+  `127.0.0.1:8001`, статику не отдаёт. CORS для Vercel-origin — в
+  `apps/api/main.py` (`CORSMiddleware`, allow-list из `WEBAPP_URL` +
+  regex `*.vercel.app` под preview-деплои). Webapp зовёт бэкенд по
+  абсолютному `VITE_API_URL` (см. `apps/webapp/.env.example`), не по
+  относительному `/api`.
 
 ```nginx
 server {
     listen 80;
-    server_name app.workkeldi.com;       # A-запись → 109.199.125.111
+    server_name api.workkeldi.com;       # A-запись → 109.199.125.111
 
-    root /home/app/unibot/apps/webapp/dist;   # статика Mini App
-    index index.html;
-
-    location /api/ {
+    location / {
         proxy_pass         http://127.0.0.1:8001/;
         proxy_http_version 1.1;
         proxy_set_header   Host              $host;
@@ -302,8 +306,6 @@ server {
         proxy_set_header   X-Forwarded-Proto $scheme;
         proxy_read_timeout 120s;
     }
-
-    location / { try_files $uri /index.html; }   # SPA fallback
 
     client_max_body_size 5M;
 }
@@ -842,16 +844,21 @@ echo '/swapfile none swap sw 0 0' >> /etc/fstab
 ```
 
   Worker: старт с 2 Playwright-сессий; если swap активно используется — снизить до 1.
-- [ ] Домен: `app.workkeldi.com` → A-запись на 109.199.125.111 (домен свободен,
+- [ ] Домен: `api.workkeldi.com` → A-запись на 109.199.125.111 (домен свободен,
   проекты не смешиваются с otclick).
 - [ ] Проект в `/home/app/unibot`; `.env` на сервере (пароль postgres не дефолтный!).
 - [ ] `docker compose up -d --build` — постгрес/редис UniBot свои, внутренняя сеть,
   с otclick-овскими postgres:17/redis:7 не конфликтуют (порты наружу не публикуются).
 - [ ] `nginx/unibot.conf` → `/etc/nginx/sites-available/unibot`, симлинк,
   `nginx -t && systemctl reload nginx`, затем `certbot --nginx -d <домен>`.
-- [ ] `npm run build` webapp → dist попадает в путь из server-блока.
+- [ ] Webapp → **Vercel**, не VPS: Root Directory `apps/webapp` в настройках
+  проекта, env `VITE_API_URL=https://api.workkeldi.com`. `WEBAPP_URL` в
+  `.env` на VPS — итоговый URL Vercel-проекта (для бота и CORS-allowlist в
+  `apps/api/main.py`).
 - [ ] BotFather: новый бот @UniBot (или имя свободное), меню-кнопка, `/setdomain` для WebApp.
-- [ ] Tribute: создать 3 цифровых продукта (S/M/L), webhook URL `https://<домен>/api/payments/tribute/webhook`.
+- [ ] Tribute: создать 3 цифровых продукта (S/M/L), webhook URL
+  `https://api.workkeldi.com/payments/tribute/webhook` (без `/api` — nginx
+  теперь проксирует домен целиком на API).
 - [ ] Smoke-тест: onboarding → каталог → транскриб → ввод кредов → автопросмотр 1 урока → покупка Stars (тестово) → referral-ссылка.
 
 ### Task 18: Заглушка старого бота

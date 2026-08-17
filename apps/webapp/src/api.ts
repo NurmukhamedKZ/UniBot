@@ -53,10 +53,12 @@ export function describeApiError(err: unknown): string {
  * (apps/api/auth.py) can HMAC-validate it and auto-create the user -- no
  * separate login step, per docs/spec.md's auth model.
  *
- * `path` is relative to `/api` (e.g. `/courses`, `/me`); the dev server
- * proxies that prefix to the API container (see vite.config.ts), and the
- * production nginx server-block does the same (docs/plan.md Task 2).
+ * `path` is a backend route (e.g. `/courses`, `/me`). `VITE_API_URL` points
+ * at the API's origin (VPS nginx in prod, local API container in dev) --
+ * webapp is deployed separately on Vercel, so this can't be same-origin.
  */
+const API_BASE = import.meta.env.VITE_API_URL ?? ''
+
 export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers)
   headers.set('X-Telegram-Init-Data', WebApp.initData)
@@ -66,7 +68,7 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
 
   let res: Response
   try {
-    res = await fetch(`/api${path}`, { ...init, headers })
+    res = await fetch(`${API_BASE}${path}`, { ...init, headers })
   } catch (err) {
     const networkErr = new Error(
       `Сеть: не удалось связаться с сервером (${path}). ${err instanceof Error ? err.message : ''}`.trim(),

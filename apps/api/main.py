@@ -11,6 +11,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from apps.api.routers.catalog import router as catalog_router
 from apps.api.routers.me import router as me_router
@@ -18,6 +19,7 @@ from apps.api.routers.payments import router as payments_router
 from apps.api.routers.watch import router as watch_router
 from packages.db.migrate import run_migrations
 from packages.db.pool import create_pool
+from packages.shared.config import WEBAPP_URL
 
 
 @asynccontextmanager
@@ -32,6 +34,15 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="UniBot API", lifespan=lifespan)
+
+# Webapp живёт на Vercel (отдельный origin) — нужен явный CORS.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[WEBAPP_URL] if WEBAPP_URL else [],
+    allow_origin_regex=r"https://.*\.vercel\.app",  # preview-деплои
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.include_router(catalog_router)
 app.include_router(watch_router)
