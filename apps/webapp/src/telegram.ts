@@ -2,30 +2,21 @@ import WebApp from '@twa-dev/sdk'
 import { retrieveRawInitData } from '@telegram-apps/bridge'
 
 /**
- * ThemeParams field -> our --tg-* CSS custom property (see src/index.css).
- * Telegram sends hex colors directly, so no conversion is needed -- just
- * copy each one onto :root once WebApp is ready.
+ * The webapp uses a fixed light brand palette (see src/index.css) instead
+ * of following the client's Telegram theme, so instead of copying
+ * themeParams onto CSS vars we sync Telegram's own chrome (header and
+ * background) to the brand cream. Clients that reject custom hex colors
+ * simply keep their default chrome; the page itself is unaffected.
  */
-const THEME_VAR_MAP: Record<string, string> = {
-  bg_color: '--tg-bg',
-  secondary_bg_color: '--tg-secondary-bg',
-  text_color: '--tg-text',
-  hint_color: '--tg-hint',
-  link_color: '--tg-link',
-  button_color: '--tg-button',
-  button_text_color: '--tg-button-text',
-  accent_text_color: '--tg-accent',
-  section_separator_color: '--tg-border',
-}
+const BRAND_CANVAS = '#f7f7f4'
 
 function applyTheme(): void {
-  const root = document.documentElement
-  const params = WebApp.themeParams as unknown as Record<string, string>
-  for (const [key, cssVar] of Object.entries(THEME_VAR_MAP)) {
-    const value = params[key]
-    if (value) root.style.setProperty(cssVar, value)
+  try {
+    WebApp.setBackgroundColor(BRAND_CANVAS)
+    WebApp.setHeaderColor(BRAND_CANVAS)
+  } catch {
+    // Older clients: keep default Telegram chrome.
   }
-  root.style.colorScheme = WebApp.colorScheme
 }
 
 /**

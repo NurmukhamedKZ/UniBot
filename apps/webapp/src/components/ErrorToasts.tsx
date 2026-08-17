@@ -39,12 +39,14 @@ export function ErrorToasts() {
       {toasts.map((t) => (
         <div
           key={t.id}
-          className="flex w-full max-w-sm items-start gap-2 rounded-lg border border-red-400/40 bg-red-950/90 px-3 py-2 text-sm text-red-100 shadow-lg"
+          className="card flex w-full max-w-sm items-start gap-2 px-3 py-2 text-sm"
+          style={{ color: 'var(--error)', borderColor: 'var(--error)' }}
         >
           <span className="flex-1 break-words">{t.message}</span>
           <button
             onClick={() => setToasts((prev) => prev.filter((x) => x.id !== t.id))}
-            className="shrink-0 text-red-200/70 hover:text-red-100"
+            className="shrink-0"
+            style={{ color: 'var(--error)' }}
             aria-label="Закрыть"
           >
             ✕

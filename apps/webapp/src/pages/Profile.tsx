@@ -20,52 +20,57 @@ export function Profile() {
   })
 
   return (
-    <div className="px-4 py-4">
-      <h1 className="mb-4 text-xl font-semibold text-[var(--tg-text)]">Профиль</h1>
+    <div className="px-4 py-5">
+      <h1 className="mb-4 text-[26px] font-normal leading-tight tracking-[-0.325px]" style={{ color: 'var(--ink)' }}>
+        Профиль
+      </h1>
 
-      {isLoading && <p className="text-[var(--tg-hint)]">Загрузка…</p>}
+      {isLoading && <p style={{ color: 'var(--muted)' }}>Загрузка…</p>}
 
       {me && (
         <>
-          <div className="mb-4 flex items-center justify-between rounded-xl border border-[var(--tg-border)] bg-[var(--tg-secondary-bg)] p-4">
+          <div className="card mb-4 flex items-center justify-between p-4">
             <div>
-              <p className="text-sm text-[var(--tg-hint)]">Баланс</p>
-              <p className="text-2xl font-semibold text-[var(--tg-text)]">{me.balance} кредитов</p>
+              <p className="section-label mb-1">Баланс</p>
+              <p className="num text-[28px] font-medium leading-none" style={{ color: 'var(--ink)' }}>
+                {me.balance} <span className="text-base font-normal">кред.</span>
+              </p>
             </div>
-            <Link
-              to="/paywall"
-              className="rounded-lg bg-[var(--tg-button)] px-3 py-2 text-sm font-medium text-[var(--tg-button-text)]"
-            >
+            <Link to="/paywall" className="btn-primary" style={{ height: 40, padding: '10px 16px' }}>
               Пополнить
             </Link>
           </div>
 
           {referral && (
-            <div className="mb-4 rounded-xl border border-[var(--tg-border)] bg-[var(--tg-secondary-bg)] p-4">
-              <p className="mb-1 text-sm font-semibold text-[var(--tg-text)]">Пригласить друзей</p>
-              <p className="mb-3 text-sm text-[var(--tg-hint)]">
-                Приглашено: {referral.invited} · Начислено бонусов: {referral.credited}
+            <div className="card mb-4 p-4">
+              <p className="mb-1 text-[16px] font-semibold" style={{ color: 'var(--ink)' }}>
+                Пригласить друзей
+              </p>
+              <p className="num mb-3 text-sm" style={{ color: 'var(--body)' }}>
+                Приглашено: {referral.invited}. Начислено бонусов: {referral.credited}.
               </p>
               <button
                 onClick={() => WebApp.openTelegramLink(referral.link)}
-                className="rounded-lg border border-[var(--tg-border)] px-3 py-2 text-sm text-[var(--tg-text)]"
+                className="btn-secondary"
+                style={{ height: 40 }}
               >
                 Поделиться ссылкой
               </button>
             </div>
           )}
 
-          <div className="mb-4">
-            <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-[var(--tg-hint)]">История</h2>
-            {me.history.length === 0 && <p className="text-[var(--tg-hint)]">Пока пусто.</p>}
-            <ul className="flex flex-col gap-1">
+          <div className="mb-5">
+            <h2 className="section-label mb-2">История</h2>
+            {me.history.length === 0 && <p style={{ color: 'var(--muted)' }}>Пока пусто.</p>}
+            <ul>
               {me.history.map((entry) => (
                 <li
                   key={entry.id}
-                  className="flex items-center justify-between rounded-lg border border-[var(--tg-border)] px-3 py-2 text-sm"
+                  className="flex items-center justify-between px-1 py-2.5 text-sm"
+                  style={{ borderBottom: '1px solid var(--hairline-soft)' }}
                 >
-                  <span className="text-[var(--tg-text)]">{REASON_LABELS[entry.reason] ?? entry.reason}</span>
-                  <span className={entry.delta >= 0 ? 'text-green-400' : 'text-[var(--tg-hint)]'}>
+                  <span style={{ color: 'var(--ink)' }}>{REASON_LABELS[entry.reason] ?? entry.reason}</span>
+                  <span className="num" style={{ color: entry.delta >= 0 ? 'var(--success)' : 'var(--muted)' }}>
                     {entry.delta >= 0 ? '+' : ''}
                     {entry.delta}
                   </span>
@@ -74,19 +79,23 @@ export function Profile() {
             </ul>
           </div>
 
-          <div>
-            <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-[var(--tg-hint)]">Просмотрено</h2>
-            {me.watched.length === 0 && <p className="text-[var(--tg-hint)]">Пока пусто.</p>}
-            <ul className="flex flex-col gap-1">
+          <div className="mb-4">
+            <h2 className="section-label mb-2">Просмотрено</h2>
+            {me.watched.length === 0 && <p style={{ color: 'var(--muted)' }}>Пока пусто.</p>}
+            <ul>
               {me.watched.map((task) => (
-                <li key={task.id} className="rounded-lg border border-[var(--tg-border)] px-3 py-2 text-sm text-[var(--tg-text)]">
-                  {task.type === 'course' ? 'Курс' : 'Урок'} {task.lesson_id ?? task.course_id} — {task.status}
+                <li
+                  key={task.id}
+                  className="px-1 py-2.5 text-sm"
+                  style={{ color: 'var(--body)', borderBottom: '1px solid var(--hairline-soft)' }}
+                >
+                  {task.type === 'course' ? 'Курс' : 'Урок'} {task.lesson_id ?? task.course_id} · {task.status}
                 </li>
               ))}
             </ul>
           </div>
 
-          <Link to="/settings" className="mt-4 block text-center text-sm text-[var(--tg-link)]">
+          <Link to="/settings" className="block text-center text-sm font-medium" style={{ color: 'var(--brand)' }}>
             Настройки аккаунта UniX
           </Link>
         </>

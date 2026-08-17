@@ -78,7 +78,8 @@ async def test_different_external_ids_both_credit(pool, make_user):
 
 # --- Router-level tests: apps/api/routers/payments.py -----------------------
 
-TRIBUTE_SECRET = "test-tribute-secret"
+TRIBUTE_SECRET = "test-tribute-api-key"
+TRIBUTE_PRODUCT_IDS = {"S": 111, "M": 222, "L": 333}
 
 
 def _make_app(pool):
@@ -90,11 +91,31 @@ def _make_app(pool):
 
 @pytest.fixture(autouse=True)
 def _set_tribute_secret(monkeypatch):
-    monkeypatch.setattr("apps.api.routers.payments.TRIBUTE_WEBHOOK_SECRET", TRIBUTE_SECRET)
+    monkeypatch.setattr("apps.api.routers.payments.TRIBUTE_API_KEY", TRIBUTE_SECRET)
+    monkeypatch.setattr(
+        "apps.api.routers.payments.TRIBUTE_PACKAGE_BY_PRODUCT_ID",
+        {v: k for k, v in TRIBUTE_PRODUCT_IDS.items()},
+    )
 
 
 def _sign(body: bytes, secret: str = TRIBUTE_SECRET) -> str:
     return hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+
+
+def _digital_product_event(*, product_id, purchase_id, telegram_id, amount=None, currency="usd"):
+    """Build a Tribute `new_digital_product` webhook envelope (real shape,
+    confirmed via Tribute's OpenAPI spec: {name, payload: {...}})."""
+    return {
+        "name": "new_digital_product",
+        "payload": {
+            "product_id": product_id,
+            "purchase_id": purchase_id,
+            "transaction_id": purchase_id * 10,
+            "telegram_user_id": telegram_id,
+            "amount": amount if amount is not None else 500,
+            "currency": currency,
+        },
+    }
 
 
 class _FakeCreateInvoiceLinkClient:
@@ -205,13 +226,11 @@ async def test_tribute_webhook_duplicate_is_noop(pool, make_user):
 
     app = _make_app(pool)
     body = json.dumps(
-        {
-            "id": f"tribute_{uuid.uuid4()}",
-            "package": "M",
-            "telegram_id": telegram_id,
-            "amount": 2490,
-            "currency": "KZT",
-        }
+        _digital_product_event(
+            product_id=TRIBUTE_PRODUCT_IDS["M"],
+            purchase_id=int(uuid.uuid4().int % 1_000_000),
+            telegram_id=telegram_id,
+        )
     ).encode()
     headers = {
         TRIBUTE_SIGNATURE_HEADER: _sign(body),
@@ -231,7 +250,7 @@ async def test_tribute_webhook_duplicate_is_noop(pool, make_user):
     user_id = await pool.fetchval(
         "SELECT id FROM users WHERE telegram_id = $1", telegram_id
     )
-    assert await ledger.get_balance(pool, user_id) == 50  # package M credits, credited once
+    assert await ledger.get_balance(pool, user_id) == 40  # package M credits, credited once
 
 
 async def test_tribute_webhook_bad_signature_rejected(pool, make_user):
@@ -240,13 +259,11 @@ async def test_tribute_webhook_bad_signature_rejected(pool, make_user):
 
     app = _make_app(pool)
     body = json.dumps(
-        {
-            "id": f"tribute_{uuid.uuid4()}",
-            "package": "S",
-            "telegram_id": telegram_id,
-            "amount": 1490,
-            "currency": "KZT",
-        }
+        _digital_product_event(
+            product_id=TRIBUTE_PRODUCT_IDS["S"],
+            purchase_id=int(uuid.uuid4().int % 1_000_000),
+            telegram_id=telegram_id,
+        )
     ).encode()
     headers = {
         TRIBUTE_SIGNATURE_HEADER: "0" * 64,  # wrong signature
@@ -289,13 +306,35 @@ async def test_tribute_webhook_non_dict_payload_is_graceful(pool, make_user):
     assert resp.json() == {"ok": False, "reason": "malformed_payload"}
 
 
+async def test_tribute_webhook_non_purchase_event_ignored(pool, make_user):
+    """newSubscription/newDonation/etc. land on the same URL as package
+    purchases -- must be a no-op 200, not treated as an unparseable payload."""
+    body = json.dumps({"name": "new_subscription", "payload": {"foo": "bar"}}).encode()
+    headers = {
+        TRIBUTE_SIGNATURE_HEADER: _sign(body),
+        "Content-Type": "application/json",
+    }
+
+    app = _make_app(pool)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post("/payments/tribute/webhook", content=body, headers=headers)
+
+    assert resp.status_code == 200
+    assert resp.json() == {"ok": True, "reason": "ignored_event", "event": "new_subscription"}
+
+
 async def test_tribute_webhook_missing_signature_header_rejected(pool, make_user):
     telegram_id = 940003
     await make_user(telegram_id)
 
     app = _make_app(pool)
     body = json.dumps(
-        {"id": f"tribute_{uuid.uuid4()}", "package": "S", "telegram_id": telegram_id}
+        _digital_product_event(
+            product_id=TRIBUTE_PRODUCT_IDS["S"],
+            purchase_id=int(uuid.uuid4().int % 1_000_000),
+            telegram_id=telegram_id,
+        )
     ).encode()
 
     transport = ASGITransport(app=app)

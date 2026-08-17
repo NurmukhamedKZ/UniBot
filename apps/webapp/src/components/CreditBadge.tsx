@@ -9,12 +9,8 @@ export function CreditBadge() {
   if (!data) return null
 
   return (
-    <button
-      onClick={() => navigate('/paywall')}
-      className="flex items-center gap-1 rounded-full border border-[var(--tg-border)] bg-[var(--tg-secondary-bg)] px-3 py-1 text-sm font-medium text-[var(--tg-text)]"
-    >
-      <span aria-hidden>⚡</span>
-      {data.balance}
+    <button onClick={() => navigate('/paywall')} className="badge-pill num" aria-label="Баланс кредитов">
+      {data.balance} кред.
     </button>
   )
 }

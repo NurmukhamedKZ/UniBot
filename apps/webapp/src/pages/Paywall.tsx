@@ -48,59 +48,96 @@ export function Paywall() {
   }
 
   return (
-    <div className="px-4 py-4">
-      <h1 className="mb-1 text-xl font-semibold text-[var(--tg-text)]">Пополнить кредиты</h1>
-      <p className="mb-4 text-sm text-[var(--tg-hint)]">1 кредит = 1 автопросмотренный урок. Кредиты не сгорают.</p>
-      {error && <p className="mb-3 text-sm text-red-400">{error}</p>}
+    <div className="px-4 py-5">
+      <h1 className="mb-1 text-[26px] font-normal leading-tight tracking-[-0.325px]" style={{ color: 'var(--ink)' }}>
+        Пополнить кредиты
+      </h1>
+      <p className="mb-5 text-sm" style={{ color: 'var(--body)' }}>
+        1 кредит = 1 автопросмотренный урок. Кредиты не сгорают.
+      </p>
+      {error && (
+        <p className="mb-3 text-sm" style={{ color: 'var(--error)' }}>
+          {error}
+        </p>
+      )}
 
       <div className="flex flex-col gap-3">
         {PACKAGE_ORDER.map((id) => {
           const pkg = PACKAGES[id]
           const isL = id === 'L'
           const crossedOut = id !== 'S' ? pkg.credits * sPerVideo : null
+          const fg = isL ? 'var(--canvas)' : 'var(--ink)'
+          const fgBody = isL ? 'var(--hairline-strong)' : 'var(--body)'
+          const fgMuted = isL ? 'var(--surface-strong)' : 'var(--muted)'
 
           return (
             <div
               key={id}
-              className={`relative rounded-xl border p-4 ${
+              className="relative rounded-[12px] p-4"
+              style={
                 isL
-                  ? 'border-[var(--tg-accent)] bg-[var(--tg-secondary-bg)] ring-2 ring-[var(--tg-accent)]'
-                  : 'border-[var(--tg-border)] bg-[var(--tg-secondary-bg)]'
-              }`}
+                  ? { background: 'var(--ink)', color: fg }
+                  : { background: 'var(--card)', border: '1px solid var(--hairline)', color: fg }
+              }
             >
               {isL && (
-                <span className="absolute -top-3 left-4 rounded-full bg-[var(--tg-accent)] px-2 py-0.5 text-xs font-semibold text-white">
-                  Лучший выбор · дешевле на {lDiscountPct}%
+                <span
+                  className="absolute -top-2.5 left-4 rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                  style={{ background: 'var(--brand)', color: 'var(--on-brand)' }}
+                >
+                  Выгоднее на {lDiscountPct}%
                 </span>
               )}
 
-              <div className="flex items-center justify-between">
+              <div className="flex items-end justify-between">
                 <div>
-                  <p className="text-sm text-[var(--tg-hint)]">Пакет {id}</p>
-                  <p className="text-lg font-semibold text-[var(--tg-text)]">{pkg.credits} видео</p>
+                  <p className="section-label mb-1" style={isL ? { color: fgBody } : undefined}>
+                    Пакет {id}
+                  </p>
+                  <p className="num text-[22px] font-medium leading-none">
+                    {pkg.credits} <span className="text-sm font-normal">видео</span>
+                  </p>
                 </div>
                 <div className="text-right">
                   {crossedOut && (
-                    <p className="text-xs text-[var(--tg-hint)] line-through">{crossedOut.toLocaleString('ru-RU')} ₸</p>
+                    <p className="num text-xs line-through" style={{ color: fgMuted }}>
+                      {crossedOut.toLocaleString('ru-RU')} ₸
+                    </p>
                   )}
-                  <p className="text-xl font-bold text-[var(--tg-text)]">{pkg.price_kzt.toLocaleString('ru-RU')} ₸</p>
-                  <p className="text-xs text-[var(--tg-hint)]">{perVideoPrice(id)} ₸/видео</p>
+                  <p className="num text-xl font-medium">{pkg.price_kzt.toLocaleString('ru-RU')} ₸</p>
+                  <p className="num text-xs" style={{ color: fgMuted }}>
+                    {perVideoPrice(id)} ₸/видео
+                  </p>
                 </div>
               </div>
 
-              <div className="mt-3 flex gap-2">
+              <div className="mt-4 flex gap-2">
                 <button
                   onClick={() => payTribute(id)}
-                  className="flex-1 rounded-lg border border-[var(--tg-border)] py-2 text-sm font-medium text-[var(--tg-text)]"
+                  className={isL ? 'flex-1' : 'btn-secondary flex-1'}
+                  style={
+                    isL
+                      ? {
+                          height: 40,
+                          borderRadius: 'var(--r-md)',
+                          border: `1px solid ${fgBody}`,
+                          color: fg,
+                          background: 'transparent',
+                          fontSize: 14,
+                          fontWeight: 500,
+                        }
+                      : { height: 40 }
+                  }
                 >
                   Картой
                 </button>
                 <button
                   onClick={() => payStars(id)}
                   disabled={busy === id}
-                  className="flex-1 rounded-lg bg-[var(--tg-button)] py-2 text-sm font-medium text-[var(--tg-button-text)] disabled:opacity-60"
+                  className="btn-primary flex-1"
+                  style={{ height: 40 }}
                 >
-                  {busy === id ? 'Открываем…' : `${pkg.stars} ⭐`}
+                  {busy === id ? 'Открываем…' : `${pkg.stars} Stars`}
                 </button>
               </div>
             </div>

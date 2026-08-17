@@ -42,44 +42,57 @@ export function CredentialsModal({ open, onClose, onSaved }: CredentialsModalPro
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 sm:items-center">
-      <div className="w-full max-w-sm rounded-t-2xl border border-[var(--tg-border)] bg-[var(--tg-secondary-bg)] p-5 sm:rounded-2xl">
-        <h2 className="text-lg font-semibold">Данные UniX</h2>
-        <p className="mt-1 text-sm text-[var(--tg-hint)]">
-          Логин и пароль от uni-x.almv.kz нужны для автопросмотра от вашего имени. Пароль хранится
-          в зашифрованном виде и используется только для входа на UniX.
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center">
+      <div
+        className="w-full max-w-sm p-5 sm:rounded-[12px]"
+        style={{ background: 'var(--card)', borderRadius: '12px 12px 0 0', borderTop: '1px solid var(--hairline)' }}
+      >
+        <h2 className="text-[18px] font-semibold" style={{ color: 'var(--ink)' }}>
+          Данные UniX
+        </h2>
+        <p className="mt-1 text-sm" style={{ color: 'var(--body)' }}>
+          Логин и пароль от uni-x.almv.kz нужны для автопросмотра от вашего имени. Пароль хранится в
+          зашифрованном виде и используется только для входа на UniX.
         </p>
         <form className="mt-4 flex flex-col gap-3" onSubmit={handleSubmit}>
-          <input
-            type="email"
-            required
-            placeholder="Email на UniX"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="rounded-lg border border-[var(--tg-border)] bg-[var(--tg-bg)] px-3 py-2 text-[var(--tg-text)] outline-none"
-          />
-          <input
-            type="password"
-            required
-            placeholder="Пароль"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="rounded-lg border border-[var(--tg-border)] bg-[var(--tg-bg)] px-3 py-2 text-[var(--tg-text)] outline-none"
-          />
-          {error && <p className="text-sm text-red-400">{error}</p>}
+          <div className="flex flex-col gap-2">
+            <label className="text-sm" style={{ color: 'var(--body)' }} htmlFor="unix-email">
+              Email
+            </label>
+            <input
+              id="unix-email"
+              type="email"
+              required
+              placeholder="email@university.kz"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="field"
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <label className="text-sm" style={{ color: 'var(--body)' }} htmlFor="unix-password">
+              Пароль
+            </label>
+            <input
+              id="unix-password"
+              type="password"
+              required
+              placeholder="Ваш пароль от UniX"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="field"
+            />
+          </div>
+          {error && (
+            <p className="text-sm" style={{ color: 'var(--error)' }}>
+              {error}
+            </p>
+          )}
           <div className="mt-2 flex gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 rounded-lg border border-[var(--tg-border)] py-2 text-[var(--tg-text)]"
-            >
+            <button type="button" onClick={onClose} className="btn-secondary flex-1">
               Отмена
             </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="flex-1 rounded-lg bg-[var(--tg-button)] py-2 font-medium text-[var(--tg-button-text)] disabled:opacity-60"
-            >
+            <button type="submit" disabled={saving} className="btn-primary flex-1">
               {saving ? 'Сохраняем…' : 'Сохранить'}
             </button>
           </div>

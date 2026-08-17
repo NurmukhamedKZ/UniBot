@@ -76,73 +76,77 @@ export function Lesson() {
     }
   }
 
-  if (isLoading) return <p className="px-4 py-4 text-[var(--tg-hint)]">Загрузка…</p>
-  if (isError || !data) return <p className="px-4 py-4 text-red-400">Урок не найден.</p>
+  if (isLoading) return <p className="px-4 py-5" style={{ color: 'var(--muted)' }}>Загрузка…</p>
+  if (isError || !data) return <p className="px-4 py-5" style={{ color: 'var(--error)' }}>Урок не найден.</p>
 
   return (
-    <div className="px-4 py-4">
-      <h1 className="mb-4 text-xl font-semibold text-[var(--tg-text)]">{data.title}</h1>
+    <div className="px-4 py-5">
+      <h1 className="mb-4 text-[26px] font-normal leading-tight tracking-[-0.325px]" style={{ color: 'var(--ink)' }}>
+        {data.title}
+      </h1>
 
-      <div className="mb-4 flex flex-col gap-2">
-        <button
-          onClick={startLessonWatch}
-          disabled={starting}
-          className="rounded-lg bg-[var(--tg-button)] py-3 font-medium text-[var(--tg-button-text)] disabled:opacity-60"
-        >
-          {starting ? 'Запускаем…' : 'Автопросмотр — 1 кредит'}
+      <div className="mb-6 flex flex-col gap-2">
+        <button onClick={startLessonWatch} disabled={starting} className="btn-primary w-full">
+          {starting ? 'Запускаем…' : 'Автопросмотр · 1 кредит'}
         </button>
         <button
           onClick={() => id && WebApp.openLink(`https://uni-x.almv.kz/platform/lessons/${id}`)}
-          className="rounded-lg border border-[var(--tg-border)] py-3 font-medium text-[var(--tg-text)]"
+          className="btn-secondary w-full"
         >
           Открыть видео в UniX
         </button>
-        {inlineError && <p className="text-sm text-red-400">{inlineError}</p>}
+        {inlineError && (
+          <p className="text-sm" style={{ color: 'var(--error)' }}>
+            {inlineError}
+          </p>
+        )}
       </div>
 
       <section className="mb-6">
-        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-[var(--tg-hint)]">Транскриб</h2>
+        <h2 className="section-label mb-2">Транскриб</h2>
         {data.transcript ? (
-          <button
-            onClick={() => downloadTranscript(data.title, data.transcript!)}
-            className="rounded-lg border border-[var(--tg-border)] px-3 py-2 text-sm text-[var(--tg-text)]"
-          >
-            Скачать .txt
-          </button>
+          <div className="card p-4">
+            <p className="mb-3 line-clamp-4 text-sm" style={{ color: 'var(--body)' }}>
+              {data.transcript}
+            </p>
+            <button onClick={() => downloadTranscript(data.title, data.transcript!)} className="btn-secondary">
+              Скачать .txt
+            </button>
+          </div>
         ) : (
-          <button
-            onClick={requestTranscript}
-            disabled={transcribing}
-            className="rounded-lg border border-[var(--tg-border)] px-3 py-2 text-sm text-[var(--tg-text)] disabled:opacity-60"
-          >
+          <button onClick={requestTranscript} disabled={transcribing} className="btn-secondary">
             {transcribing ? 'Запрашиваем…' : 'Получить транскриб'}
           </button>
         )}
       </section>
 
       <section>
-        <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-[var(--tg-hint)]">Вопросы и ответы</h2>
-        {data.questions.length === 0 && <p className="text-[var(--tg-hint)]">Пока нет накопленных вопросов.</p>}
+        <h2 className="section-label mb-2">Вопросы и ответы</h2>
+        {data.questions.length === 0 && <p style={{ color: 'var(--muted)' }}>Пока нет накопленных вопросов.</p>}
         <div className="flex flex-col gap-2">
           {data.questions.map((q, i) => (
-            <div key={i} className="rounded-lg border border-[var(--tg-border)] bg-[var(--tg-secondary-bg)]">
+            <div key={i} className="card overflow-hidden">
               <button
                 onClick={() => setOpenIndex(openIndex === i ? null : i)}
-                className="flex w-full items-center justify-between px-3 py-2 text-left text-sm text-[var(--tg-text)]"
+                className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-sm"
+                style={{ color: 'var(--ink)' }}
               >
                 <span>{q.question}</span>
-                <span className="ml-2 shrink-0 text-[var(--tg-hint)]">{openIndex === i ? '−' : '+'}</span>
+                <span className="num shrink-0" style={{ color: 'var(--muted)' }}>
+                  {openIndex === i ? '−' : '+'}
+                </span>
               </button>
               {openIndex === i && (
                 <ul className="flex flex-col gap-1 px-3 pb-3">
                   {q.answers.map((answer, ai) => (
                     <li
                       key={ai}
-                      className={`rounded px-2 py-1 text-sm ${
+                      className="rounded-[4px] px-2 py-1 text-sm"
+                      style={
                         ai === q.llm_answer_index
-                          ? 'bg-[var(--tg-accent)] text-white'
-                          : 'text-[var(--tg-text)]'
-                      }`}
+                          ? { background: 'var(--brand)', color: 'var(--on-brand)' }
+                          : { color: 'var(--body)' }
+                      }
                     >
                       {answer}
                     </li>

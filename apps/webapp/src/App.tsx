@@ -10,14 +10,18 @@ import { Profile } from './pages/Profile'
 import { Settings } from './pages/Settings'
 import { Paywall } from './pages/Paywall'
 
-const TAB_LINK_CLASS = ({ isActive }: { isActive: boolean }) =>
-  `flex-1 py-2 text-center text-sm ${isActive ? 'text-[var(--tg-accent)] font-medium' : 'text-[var(--tg-hint)]'}`
+const TAB_LINK_CLASS = 'flex-1 text-center text-sm'
 
 function Layout() {
   return (
-    <div className="flex min-h-screen flex-col pb-14">
-      <header className="flex items-center justify-between border-b border-[var(--tg-border)] px-4 py-2">
-        <span className="font-semibold text-[var(--tg-text)]">UniBot</span>
+    <div className="flex min-h-screen flex-col pb-16">
+      <header
+        className="sticky top-0 z-40 flex items-center justify-between px-4 py-3"
+        style={{ background: 'var(--canvas)', borderBottom: '1px solid var(--hairline)' }}
+      >
+        <span className="text-[17px] font-semibold tracking-tight" style={{ color: 'var(--ink)' }}>
+          Uni<span style={{ color: 'var(--brand)' }}>Bot</span>
+        </span>
         <CreditBadge />
       </header>
 
@@ -27,16 +31,35 @@ function Layout() {
         <Outlet />
       </main>
 
-      <nav className="fixed bottom-0 left-0 right-0 flex border-t border-[var(--tg-border)] bg-[var(--tg-secondary-bg)]">
-        <NavLink to="/catalog" className={TAB_LINK_CLASS}>
-          Каталог
-        </NavLink>
-        <NavLink to="/profile" className={TAB_LINK_CLASS}>
-          Профиль
-        </NavLink>
-        <NavLink to="/paywall" className={TAB_LINK_CLASS}>
-          Кредиты
-        </NavLink>
+      <nav
+        className="fixed bottom-0 left-0 right-0 flex"
+        style={{ background: 'var(--canvas)', borderTop: '1px solid var(--hairline)' }}
+      >
+        {(
+          [
+            ['/catalog', 'Каталог'],
+            ['/profile', 'Профиль'],
+            ['/paywall', 'Кредиты'],
+          ] as const
+        ).map(([to, label]) => (
+          <NavLink key={to} to={to} className={TAB_LINK_CLASS}>
+            {({ isActive }) => (
+              <span
+                className="flex flex-col items-center gap-1 py-2.5"
+                style={{
+                  color: isActive ? 'var(--ink)' : 'var(--muted)',
+                  fontWeight: isActive ? 600 : 400,
+                }}
+              >
+                <span
+                  className="h-[3px] w-6 rounded-full"
+                  style={{ background: isActive ? 'var(--brand)' : 'transparent' }}
+                />
+                {label}
+              </span>
+            )}
+          </NavLink>
+        ))}
       </nav>
     </div>
   )

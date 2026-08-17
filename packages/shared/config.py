@@ -29,8 +29,22 @@ ENCRYPTION_KEY = os.environ.get("ENCRYPTION_KEY")
 
 ADMIN_ID = os.environ.get("ADMIN_ID")
 
+# Per Tribute's docs (wiki.tribute.tg/for-content-creators/api-documentation/webhooks):
+# webhook requests are signed with the API key itself, there is no separate
+# "webhook secret". TRIBUTE_PRODUCT_ID_{S,M,L} map Tribute's own numeric
+# product_id (shown in the author dashboard after creating each digital
+# product) back to our S/M/L package keys -- the webhook payload only carries
+# Tribute's product_id, not our package name.
 TRIBUTE_API_KEY = os.environ.get("TRIBUTE_API_KEY")
-TRIBUTE_WEBHOOK_SECRET = os.environ.get("TRIBUTE_WEBHOOK_SECRET")
+TRIBUTE_PACKAGE_BY_PRODUCT_ID = {
+    int(v): pkg
+    for pkg, v in (
+        ("S", os.environ.get("TRIBUTE_PRODUCT_ID_S")),
+        ("M", os.environ.get("TRIBUTE_PRODUCT_ID_M")),
+        ("L", os.environ.get("TRIBUTE_PRODUCT_ID_L")),
+    )
+    if v
+}
 
 
 # Per-video цена падает 75 → 70 → 45 ₸. M — decoy (почти как S за видео),

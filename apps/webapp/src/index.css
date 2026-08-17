@@ -1,24 +1,49 @@
 @import "tailwindcss";
 
 /*
- * Dark, UniX-adjacent theme. Values below are fallback defaults for
- * outside-Telegram dev/preview; src/telegram.ts overwrites these same
- * custom properties from WebApp.themeParams once running inside Telegram,
- * so both light and dark Telegram themes render correctly without a
- * separate light stylesheet.
+ * UniBot brand theme, built on the Cursor-style design system:
+ * warm cream canvas, warm near-black ink, a single orange CTA color,
+ * hairline-only depth (no shadows), JetBrains Mono on numeric/code
+ * surfaces, and a pastel timeline palette scoped to the autowatch
+ * task bar only. The brand palette is fixed (light) on purpose: the
+ * Telegram chrome is synced to the same colors in src/telegram.ts.
  */
 :root {
-  --tg-bg: #0f1115;
-  --tg-secondary-bg: #16181f;
-  --tg-text: #f3f4f6;
-  --tg-hint: #8b8f9a;
-  --tg-link: #7aa2ff;
-  --tg-button: #5b8def;
-  --tg-button-text: #ffffff;
-  --tg-accent: #7c5cff;
-  --tg-border: #262a35;
+  /* brand */
+  --brand: #f54e00;
+  --brand-active: #d04200;
+  --on-brand: #ffffff;
 
-  color-scheme: dark;
+  /* surfaces */
+  --canvas: #f7f7f4;
+  --canvas-soft: #fafaf7;
+  --card: #ffffff;
+  --surface-strong: #e6e5e0;
+
+  /* hairlines */
+  --hairline: #e6e5e0;
+  --hairline-soft: #efeee8;
+  --hairline-strong: #cfcdc4;
+
+  /* text */
+  --ink: #26251e;
+  --body: #5a5852;
+  --muted: #807d72;
+
+  /* timeline pastels (autowatch task bar only) */
+  --tl-queued: #dfa88f;
+  --tl-running: #9fbbe0;
+  --tl-done: #c08532;
+
+  /* semantic */
+  --error: #cf2d56;
+  --success: #1f8a65;
+
+  /* radii */
+  --r-md: 8px;
+  --r-lg: 12px;
+
+  color-scheme: light;
 }
 
 html,
@@ -29,8 +54,130 @@ body,
 
 body {
   margin: 0;
-  background: var(--tg-bg);
-  color: var(--tg-text);
-  font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: 'Inter Variable', system-ui, 'Segoe UI', Roboto, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+}
+
+/* ---- shared component classes ---- */
+
+.btn-primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 44px;
+  padding: 10px 18px;
+  border: none;
+  border-radius: var(--r-md);
+  background: var(--brand);
+  color: var(--on-brand);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+.btn-primary:active {
+  background: var(--brand-active);
+  transform: scale(0.98);
+}
+.btn-primary:disabled {
+  opacity: 0.55;
+  cursor: default;
+  transform: none;
+}
+
+.btn-secondary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 44px;
+  padding: 9px 17px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-md);
+  background: var(--card);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+.btn-secondary:active {
+  background: var(--canvas-soft);
+  transform: scale(0.98);
+}
+.btn-secondary:disabled {
+  opacity: 0.55;
+  cursor: default;
+  transform: none;
+}
+
+.card {
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  background: var(--card);
+}
+
+.badge-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  background: var(--surface-strong);
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.88px;
+  text-transform: uppercase;
+}
+
+.timeline-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.88px;
+  text-transform: uppercase;
+}
+
+.field {
+  width: 100%;
+  height: 44px;
+  padding: 12px 16px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-md);
+  background: var(--card);
+  color: var(--ink);
+  font-size: 16px;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+.field::placeholder {
+  color: var(--muted);
+}
+.field:focus {
+  border-color: var(--ink);
+}
+
+.num {
+  font-family: 'JetBrains Mono Variable', ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.section-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.88px;
+  text-transform: uppercase;
+  color: var(--muted);
 }

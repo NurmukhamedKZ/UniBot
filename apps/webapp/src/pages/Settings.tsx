@@ -20,36 +20,38 @@ export function Settings() {
   }
 
   return (
-    <div className="px-4 py-4">
-      <h1 className="mb-4 text-xl font-semibold text-[var(--tg-text)]">Настройки</h1>
+    <div className="px-4 py-5">
+      <h1 className="mb-4 text-[26px] font-normal leading-tight tracking-[-0.325px]" style={{ color: 'var(--ink)' }}>
+        Настройки
+      </h1>
 
-      <div className="mb-4 rounded-xl border border-[var(--tg-border)] bg-[var(--tg-secondary-bg)] p-4">
-        <p className="mb-1 text-sm font-semibold text-[var(--tg-text)]">Данные UniX</p>
-        <p className="mb-3 text-sm text-[var(--tg-hint)]">
-          Пароль шифруется (Fernet) и используется только для входа на uni-x.almv.kz от вашего
-          имени во время автопросмотра. Мы не показываем и не передаём его никому.
+      <div className="card p-4">
+        <p className="mb-1 text-[16px] font-semibold" style={{ color: 'var(--ink)' }}>
+          Данные UniX
+        </p>
+        <p className="mb-4 text-sm" style={{ color: 'var(--body)' }}>
+          Пароль шифруется (Fernet) и используется только для входа на uni-x.almv.kz от вашего имени
+          во время автопросмотра. Мы не показываем и не передаём его никому.
         </p>
 
         {isLoading ? (
-          <p className="text-[var(--tg-hint)]">Загрузка…</p>
+          <p style={{ color: 'var(--muted)' }}>Загрузка…</p>
         ) : (
           <>
-            <p className="mb-3 text-sm text-[var(--tg-text)]">
-              Статус: {me?.unix_email_set ? 'данные сохранены' : 'не заданы'}
+            <p className="mb-3 flex items-center gap-2 text-sm" style={{ color: 'var(--body)' }}>
+              <span
+                className="inline-block h-2 w-2 rounded-full"
+                style={{ background: me?.unix_email_set ? 'var(--success)' : 'var(--muted)' }}
+                aria-hidden
+              />
+              {me?.unix_email_set ? 'Данные сохранены' : 'Не заданы'}
             </p>
             <div className="flex gap-2">
-              <button
-                onClick={() => setShowCreds(true)}
-                className="rounded-lg bg-[var(--tg-button)] px-3 py-2 text-sm font-medium text-[var(--tg-button-text)]"
-              >
+              <button onClick={() => setShowCreds(true)} className="btn-primary" style={{ height: 40 }}>
                 {me?.unix_email_set ? 'Изменить' : 'Указать данные'}
               </button>
               {me?.unix_email_set && (
-                <button
-                  onClick={handleDelete}
-                  disabled={deleting}
-                  className="rounded-lg border border-[var(--tg-border)] px-3 py-2 text-sm text-[var(--tg-text)] disabled:opacity-60"
-                >
+                <button onClick={handleDelete} disabled={deleting} className="btn-secondary" style={{ height: 40 }}>
                   {deleting ? 'Удаляем…' : 'Удалить'}
                 </button>
               )}

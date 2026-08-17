@@ -44,37 +44,43 @@ export function CoursePage() {
   }
 
   return (
-    <div className="px-4 py-4">
-      <h1 className="mb-1 text-xl font-semibold text-[var(--tg-text)]">{course?.title ?? 'Курс'}</h1>
+    <div className="px-4 py-5">
+      <h1 className="mb-1 text-[26px] font-normal leading-tight tracking-[-0.325px]" style={{ color: 'var(--ink)' }}>
+        {course?.title ?? 'Курс'}
+      </h1>
       {course?.lessons_count != null && (
-        <p className="mb-4 text-sm text-[var(--tg-hint)]">{course.lessons_count} уроков</p>
+        <p className="num mb-4 text-sm" style={{ color: 'var(--body)' }}>
+          {course.lessons_count} уроков
+        </p>
       )}
 
-      <button
-        onClick={startCourseWatch}
-        disabled={starting}
-        className="mb-4 w-full rounded-lg bg-[var(--tg-button)] py-3 font-medium text-[var(--tg-button-text)] disabled:opacity-60"
-      >
-        {starting ? 'Запускаем…' : 'Смотреть весь курс'}
-      </button>
-      {inlineError && <p className="mb-4 text-sm text-red-400">{inlineError}</p>}
+      <div className="mb-5 flex flex-col gap-2">
+        <button onClick={startCourseWatch} disabled={starting} className="btn-primary w-full">
+          {starting ? 'Запускаем…' : 'Смотреть весь курс'}
+        </button>
+        {inlineError && (
+          <p className="text-sm" style={{ color: 'var(--error)' }}>
+            {inlineError}
+          </p>
+        )}
+      </div>
 
-      {isLoading && <p className="text-[var(--tg-hint)]">Загрузка уроков…</p>}
+      {isLoading && <p style={{ color: 'var(--muted)' }}>Загрузка уроков…</p>}
 
-      <ul className="flex flex-col gap-2">
+      <ul className="flex flex-col">
         {lessons?.map((lesson) => (
-          <li key={lesson.lesson_id}>
+          <li key={lesson.lesson_id} style={{ borderBottom: '1px solid var(--hairline-soft)' }}>
             <Link
               to={`/lessons/${lesson.lesson_id}`}
-              className="flex items-center justify-between rounded-lg border border-[var(--tg-border)] bg-[var(--tg-secondary-bg)] px-3 py-2"
+              className="flex items-center justify-between gap-3 rounded-lg px-1 py-3 active:bg-[var(--canvas-soft)]"
             >
-              <span className="text-sm text-[var(--tg-text)]">
-                {lesson.position != null ? `${lesson.position}. ` : ''}
+              <span className="text-sm" style={{ color: 'var(--ink)' }}>
+                {lesson.position != null && <span className="num" style={{ color: 'var(--muted)' }}>{lesson.position}. </span>}
                 {lesson.title ?? lesson.lesson_id}
               </span>
-              <span className="flex gap-1 text-xs text-[var(--tg-hint)]">
-                {lesson.has_transcript && <span title="Есть транскриб">📄</span>}
-                {lesson.questions_count > 0 && <span title="Есть вопросы">❓{lesson.questions_count}</span>}
+              <span className="num flex shrink-0 gap-2 text-[11px]" style={{ color: 'var(--muted)' }}>
+                {lesson.has_transcript && <span className="badge-pill">TXT</span>}
+                {lesson.questions_count > 0 && <span className="badge-pill">Q&amp;A {lesson.questions_count}</span>}
               </span>
             </Link>
           </li>
