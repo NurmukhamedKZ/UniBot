@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { apiPost } from '../api'
-import { WebApp } from '../telegram'
+import { WebApp, openExternalLink } from '../telegram'
 import { PACKAGES, type CreateInvoiceResponse, type PackageId } from '../types'
 
 const TRIBUTE_LINKS: Record<PackageId, string | undefined> = {
@@ -29,7 +29,7 @@ export function Paywall() {
       setError('Оплата картой временно недоступна.')
       return
     }
-    WebApp.openLink(link)
+    openExternalLink(link)
   }
 
   async function payStars(id: PackageId) {

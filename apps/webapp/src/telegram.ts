@@ -1,5 +1,5 @@
 import WebApp from '@twa-dev/sdk'
-import { retrieveRawInitData } from '@telegram-apps/bridge'
+import { postEvent, retrieveRawInitData } from '@telegram-apps/bridge'
 
 /**
  * The webapp uses a fixed light brand palette (see src/index.css) instead
@@ -55,6 +55,21 @@ export function initTelegramWebApp(): void {
  */
 export function getInitData(): string {
   return retrieveRawInitData() ?? ''
+}
+
+/**
+ * Same @twa-dev/sdk staleness as initData (see getInitData above):
+ * `WebApp.openLink` goes through its bundled bridge reimplementation and can
+ * silently no-op on current Telegram clients. `postEvent` talks to the real
+ * native bridge directly. Falls back to `window.open` outside Telegram (e.g.
+ * testing the Vercel URL in a plain browser tab).
+ */
+export function openExternalLink(url: string): void {
+  try {
+    postEvent('web_app_open_link', { url })
+  } catch {
+    window.open(url, '_blank')
+  }
 }
 
 export { WebApp }
