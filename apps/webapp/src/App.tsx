@@ -1,4 +1,4 @@
-import { NavLink, Outlet, Route, Routes } from 'react-router-dom'
+import { Link, NavLink, Outlet, Route, Routes } from 'react-router-dom'
 import { ErrorToasts } from './components/ErrorToasts'
 import { OnboardingGate } from './pages/Onboarding'
 import { Catalog } from './pages/Catalog'
@@ -15,9 +15,9 @@ function Layout() {
         className="sticky top-0 z-40 flex items-center justify-between px-4 py-3"
         style={{ background: 'var(--canvas)', borderBottom: '1px solid var(--hairline)' }}
       >
-        <span className="text-[17px] font-semibold tracking-tight" style={{ color: 'var(--ink)' }}>
+        <Link to="/catalog" className="text-[17px] font-semibold tracking-tight" style={{ color: 'var(--ink)' }}>
           Uni<span style={{ color: 'var(--brand)' }}>Bot</span>
-        </span>
+        </Link>
       </header>
 
       <main className="flex-1">
