@@ -3,7 +3,6 @@ import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useParams } from 'react-router-dom'
 import { apiGet, apiPost } from '../api'
 import { QueryState } from '../components/QueryState'
-import { openExternalLink } from '../telegram'
 import type { TranscriptState, Video, WeekDetail } from '../types'
 
 function formatDuration(sec: number) {
@@ -54,7 +53,7 @@ const isPending = (s?: TranscriptState) => PENDING.includes(s?.status ?? '')
 const transcriptKey = (kid: string) => ['transcript', kid]
 
 export function WeekPage() {
-  const { courseId, weekId } = useParams<{ courseId: string; weekId: string }>()
+  const { weekId } = useParams<{ weekId: string }>()
   const qc = useQueryClient()
   const [watching, setWatching] = useState(false)
   const [requested, setRequested] = useState<Set<string>>(new Set())
@@ -138,14 +137,6 @@ export function WeekPage() {
                   {missing.length === 0 && anyPending ? 'Транскрибируем все…' : 'Транскрибировать все лекции'}
                 </button>
               ))}
-            <button
-              onClick={() =>
-                openExternalLink(`https://uninet.kbtu.kz/student/course-materials/${courseId}/${data.week.weekNumber}`)
-              }
-              className="btn-secondary w-full"
-            >
-              Открыть на uninet
-            </button>
           </div>
 
           {videos.length === 0 && <p style={{ color: 'var(--muted)' }}>На этой неделе нет видео.</p>}
