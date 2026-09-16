@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router-dom'
-import { apiGet, apiPost } from '../api'
+import { apiGet, apiPost, isCredentialsError } from '../api'
+import { CredentialsModal } from '../components/CredentialsModal'
 import { QueryState } from '../components/QueryState'
 import type { Course, CourseDetail } from '../types'
 
@@ -10,6 +11,7 @@ export function CoursePage() {
   const qc = useQueryClient()
   const [watching, setWatching] = useState(false)
   const [result, setResult] = useState<string | null>(null)
+  const [loginOpen, setLoginOpen] = useState(false)
 
   const { data: courses } = useQuery({ queryKey: ['courses'], queryFn: () => apiGet<Course[]>('/courses') })
   const course = courses?.find((c) => String(c.id) === id)
@@ -27,8 +29,9 @@ export function CoursePage() {
       const res = await apiPost<{ marked: number }>(`/courses/${id}/watch`)
       setResult(res.marked ? `Готово: отмечено ${res.marked} видео.` : 'Все открытые видео уже просмотрены.')
       qc.invalidateQueries({ queryKey: ['week'] })
-    } catch {
+    } catch (err) {
       setResult(null)
+      if (isCredentialsError(err)) setLoginOpen(true)
     } finally {
       setWatching(false)
     }
@@ -46,6 +49,7 @@ export function CoursePage() {
       )}
 
       <QueryState isLoading={isLoading} error={error} />
+      <CredentialsModal open={loginOpen} onClose={() => setLoginOpen(false)} />
 
       {data && (
         <>

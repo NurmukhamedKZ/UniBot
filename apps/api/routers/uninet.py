@@ -1,8 +1,10 @@
 """Курсы/недели/видео uninet от имени юзера + автопросмотр + транскрибы.
 
-Каталог личный: всё читается вживую из uninet по кредам юзера (у каждого
-студента свои курсы). Транскрибы кэшируются в нашей БД по id видео Kinescope
-и общие для всех.
+Каталог личный: с кредами всё читается вживую из uninet (у каждого студента
+свои курсы) и попутно кэшируется в БД. Без кредов отдаём кэш — все курсы,
+которые кто-то уже открывал, — чтобы копировать готовые транскрибы; то, чего
+в кэше нет, и новые транскрибы требуют входа (409 no_credentials).
+Транскрибы кэшируются по id видео Kinescope и общие для всех.
 """
 
 from __future__ import annotations
@@ -28,8 +30,12 @@ class NoCredentials(Exception):
     pass
 
 
+def _has_credentials(user) -> bool:
+    return user["kbtu_email"] is not None and user["kbtu_password_enc"] is not None
+
+
 def _session(user) -> uninet.Uninet:
-    if user["kbtu_email"] is None or user["kbtu_password_enc"] is None:
+    if not _has_credentials(user):
         raise NoCredentials()
     return uninet.session(user["kbtu_email"], decrypt_password(user["kbtu_password_enc"]))
 
@@ -45,36 +51,52 @@ def _kid(kid: str) -> str:
 
 
 @router.get("/courses")
-async def list_courses(user=Depends(current_user)):
-    return await _session(user).courses()
+async def list_courses(request: Request, user=Depends(current_user)):
+    pool = _pool(request)
+    if not _has_credentials(user):
+        return await catalog.cached_courses(pool)
+    courses = await _session(user).courses()
+    await catalog.cache_courses(pool, courses)
+    return courses
 
 
 @router.get("/courses/{course_id}")
-async def get_course(course_id: int, user=Depends(current_user)):
+async def get_course(course_id: int, request: Request, user=Depends(current_user)):
+    pool = _pool(request)
+    if not _has_credentials(user):
+        weeks = await catalog.cached_course_weeks(pool, course_id)
+        if weeks is None:
+            raise NoCredentials()
+        return {"course": {"id": course_id}, "weeks": weeks}
     data = await _session(user).course(course_id)
+    await catalog.cache_course_weeks(pool, course_id, data["weeks"])
     return {"course": data["course"], "weeks": data["weeks"]}
 
 
 @router.get("/weeks/{week_id}")
 async def get_week(week_id: int, request: Request, user=Depends(current_user)):
-    data = await _session(user).week(week_id)
-    videos = uninet.week_videos(data)
-    kids = [uninet.kinescope_id(v["url"]) for v in videos]
-    done = await catalog.transcribed_ids(_pool(request), kids)
-    return {
-        "week": data["week"],
-        "videos": [
+    pool = _pool(request)
+    if _has_credentials(user):
+        data = await _session(user).week(week_id)
+        week = data["week"]
+        videos = [
             {
                 "id": v["id"],
                 "title": v["title"],
                 "duration_sec": v["durationSec"],
                 "completed": v["completed"],
-                "kinescope_id": kid,
-                "has_transcript": kid in done,
+                "kinescope_id": uninet.kinescope_id(v["url"]),
             }
-            for v, kid in zip(videos, kids)
-        ],
-    }
+            for v in uninet.week_videos(data)
+        ]
+        await catalog.cache_week(pool, week_id, week, [{**v, "completed": False} for v in videos])
+    else:
+        cached = await catalog.cached_week(pool, week_id)
+        if cached is None:
+            raise NoCredentials()
+        week, videos = cached
+    done = await catalog.transcribed_ids(pool, [v["kinescope_id"] for v in videos])
+    return {"week": week, "videos": [{**v, "has_transcript": v["kinescope_id"] in done} for v in videos]}
 
 
 async def _watch_week(s: uninet.Uninet, week_id: int) -> int:
@@ -118,6 +140,8 @@ async def transcribe(kid: str, request: Request, user=Depends(current_user)):
     if state["status"] == "done":
         return JSONResponse(status_code=200, content=state)
     if state["status"] not in ("queued", "running"):
+        if not _has_credentials(user):  # новые транскрибы (OpenAI) — только вошедшим
+            raise NoCredentials()
         await tasks.enqueue(pool, user_id=user["id"], type="transcribe", lesson_id=kid)
         state["status"] = "queued"
     return state

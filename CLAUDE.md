@@ -8,8 +8,10 @@ Playwright/LLM-тесты) — в legacy/, не собирается и не т�
 ## Устройство
 - `packages/core/uninet.py` — HTTP-клиент uninet (Keycloak PKCE-логин, курсы,
   недели, progress) + аудио из Kinescope. `packages/core/transcribe.py` — ffmpeg → OpenAI.
-- api: каталог читается вживую из uninet по кредам юзера (у каждого свои курсы),
-  автопросмотр — синхронный POST progress. Креды — Fernet в `users.kbtu_*`.
+- api: с кредами каталог читается вживую из uninet (у каждого свои курсы) и кэшируется
+  в `uninet_courses`/`uninet_weeks`; без кредов отдаётся этот кэш (готовые транскрибы),
+  новые транскрибы и автопросмотр (синхронный POST progress) — только с кредами
+  (409 no_credentials). Креды — Fernet в `users.kbtu_*`.
 - worker: только очередь `watch_tasks type='transcribe'`, `lesson_id` = id видео Kinescope.
   Транскрибы кэшируются в `transcripts` и общие для всех.
 - Запуск: docker compose up -d --build. Тесты: pytest tests/ -v (нужен Postgres,

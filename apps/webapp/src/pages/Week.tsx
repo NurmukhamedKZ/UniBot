@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useParams } from 'react-router-dom'
-import { apiGet, apiPost } from '../api'
+import { apiGet, apiPost, isCredentialsError } from '../api'
+import { CredentialsModal } from '../components/CredentialsModal'
 import { QueryState } from '../components/QueryState'
 import type { TranscriptState, Video, WeekDetail } from '../types'
 
@@ -58,6 +59,12 @@ export function WeekPage() {
   const [watching, setWatching] = useState(false)
   const [requested, setRequested] = useState<Set<string>>(new Set())
   const [copiedAll, copyAll] = useCopied()
+  const [loginOpen, setLoginOpen] = useState(false)
+
+  // Без кредов автопросмотр и новые транскрибы отвечают 409 -- просим войти.
+  const loginOnCredentialsError = (err: unknown) => {
+    if (isCredentialsError(err)) setLoginOpen(true)
+  }
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['week', weekId],
@@ -80,6 +87,8 @@ export function WeekPage() {
     try {
       await apiPost(`/weeks/${weekId}/watch`)
       await qc.invalidateQueries({ queryKey: ['week', weekId] })
+    } catch (err) {
+      loginOnCredentialsError(err)
     } finally {
       setWatching(false)
     }
@@ -92,7 +101,7 @@ export function WeekPage() {
         const res = await apiPost<TranscriptState>(`/videos/${v.kinescope_id}/transcribe`)
         qc.setQueryData(transcriptKey(v.kinescope_id), res)
       }),
-    )
+    ).catch(loginOnCredentialsError)
   }
 
   const texts = transcripts.map((t) => t.data?.transcript ?? null)
@@ -116,6 +125,7 @@ export function WeekPage() {
       </h1>
 
       <QueryState isLoading={isLoading} error={error} />
+      <CredentialsModal open={loginOpen} onClose={() => setLoginOpen(false)} />
 
       {data && (
         <>

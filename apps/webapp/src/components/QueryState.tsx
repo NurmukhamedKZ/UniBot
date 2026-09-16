@@ -17,7 +17,7 @@ export function QueryState({ isLoading, error }: { isLoading: boolean; error: un
         <p className="mb-4 text-sm" style={{ color: 'var(--body)' }}>
           {bad
             ? 'Возможно, пароль сменился. Введите актуальные данные.'
-            : 'Курсы у каждого студента свои, поэтому нужен ваш логин uninet.kbtu.kz.'}
+            : 'Этого курса в UniBot пока нет. Войдите через uninet.kbtu.kz — откроются все ваши курсы.'}
         </p>
         <button onClick={() => setOpen(true)} className="btn-primary w-full">
           Войти
