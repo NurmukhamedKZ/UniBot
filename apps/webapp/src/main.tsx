@@ -7,10 +7,13 @@ import '@fontsource-variable/jetbrains-mono'
 import './index.css'
 import App from './App.tsx'
 import { initTelegramWebApp } from './telegram'
+import { isRetryable } from './api'
 
 initTelegramWebApp()
 
-const queryClient = new QueryClient()
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { retry: (count, err) => isRetryable(err) && count < 2 } },
+})
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

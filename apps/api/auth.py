@@ -17,9 +17,8 @@ from urllib.parse import parse_qsl
 import asyncpg
 from fastapi import Header, HTTPException, Request
 
-from packages.db import ledger, referrals
 from packages.db.users import get_or_create_user
-from packages.shared.config import TELEGRAM_TOKEN, WELCOME_CREDITS
+from packages.shared.config import TELEGRAM_TOKEN
 
 
 def validate_init_data(init_data: str, bot_token: str, max_age: int = 3600) -> dict:
@@ -30,8 +29,7 @@ def validate_init_data(init_data: str, bot_token: str, max_age: int = 3600) -> d
     from the bot token (keyed by the literal string ``WebAppData``), and compare
     in constant time. Also rejects stale payloads via ``auth_date``.
 
-    Returns the *raw* parsed initData dict (not just the ``user`` field) so
-    callers can also read fields like ``start_param``.
+    Returns the *raw* parsed initData dict (not just the ``user`` field).
     """
     data = dict(parse_qsl(init_data))
     received_hash = data.pop("hash", "")
@@ -55,29 +53,11 @@ def validate_init_data(init_data: str, bot_token: str, max_age: int = 3600) -> d
     return data
 
 
-def _parse_referrer_tid(start_param: str | None) -> int | None:
-    """Parse a ``ref_<telegram_id>`` start_param into an int, or None if absent/malformed."""
-    if not start_param or not start_param.startswith("ref_"):
-        return None
-    try:
-        return int(start_param.removeprefix("ref_"))
-    except ValueError:
-        return None
-
-
 async def current_user(
     request: Request,
     x_telegram_init_data: str | None = Header(default=None, alias="X-Telegram-Init-Data"),
 ) -> asyncpg.Record:
-    """FastAPI dependency: validate initData, auto-create the user, return their row.
-
-    On first-ever sight of a telegram_id (``get_or_create_user`` returns
-    ``was_created=True``): grants ``WELCOME_CREDITS`` and, if the initData
-    carries a ``start_param`` of the form ``ref_<telegram_id>``, registers the
-    referral. Both are gated strictly on the race-safe ``was_created`` flag
-    from ``packages.db.users.get_or_create_user`` — never re-derived from ledger
-    state — so a single conditional ``add_entry`` call here cannot double-grant.
-    """
+    """FastAPI dependency: validate initData, auto-create the user, return their row."""
     if not x_telegram_init_data:
         raise HTTPException(401, "missing X-Telegram-Init-Data header")
 
@@ -97,25 +77,5 @@ async def current_user(
 
     pool: asyncpg.Pool = request.app.state.pool
 
-    # User creation + welcome credit grant + referral registration must commit
-    # (or roll back) together: if the process crashed between a standalone
-    # user-insert commit and a separate credit-insert commit, the one-shot
-    # was_created flag would never be True again and the welcome credits
-    # would be lost forever. Running get_or_create_user's insert on the same
-    # connection/transaction as the follow-up writes closes that window.
-    async with pool.acquire() as conn:
-        async with conn.transaction():
-            user, was_created = await get_or_create_user(conn, telegram_id, username, first_name)
-
-            if was_created:
-                await ledger.add_entry(
-                    conn, user_id=user["id"], delta=WELCOME_CREDITS, reason="bonus"
-                )
-
-                referrer_tid = _parse_referrer_tid(data.get("start_param"))
-                if referrer_tid is not None:
-                    await referrals.register(
-                        conn, referrer_tid=referrer_tid, referred_user_id=user["id"]
-                    )
-
+    user, _ = await get_or_create_user(pool, telegram_id, username, first_name)
     return user

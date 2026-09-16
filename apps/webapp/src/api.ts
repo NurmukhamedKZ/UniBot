@@ -4,8 +4,7 @@ import { getInitData } from './telegram'
  * Thrown for any non-2xx response. `body` is the parsed JSON error payload
  * (falls back to `{}` if the response wasn't JSON) -- callers match on
  * `status` + `body.error` for the specific cases the backend defines
- * (402 `no_credits`, 409 `no_credentials` / `task_already_active`, etc.),
- * per docs/plan.md's `/watch` contract.
+ * (409 `no_credentials` / `bad_credentials`, 502 `uninet_unavailable`).
  */
 export class ApiError extends Error {
   status: number
@@ -18,14 +17,21 @@ export class ApiError extends Error {
   }
 }
 
-/** 402 `{error: "no_credits"}` -- balance is 0, show the paywall. */
-export function isNoCredits(err: unknown): err is ApiError {
-  return err instanceof ApiError && err.status === 402 && err.body.error === 'no_credits'
+/**
+ * 409 `no_credentials` (креды KBTU не заданы) или `bad_credentials` (uninet их
+ * не принял, например сменили пароль) -- показать форму входа.
+ */
+export function isCredentialsError(err: unknown): err is ApiError {
+  return (
+    err instanceof ApiError &&
+    err.status === 409 &&
+    (err.body.error === 'no_credentials' || err.body.error === 'bad_credentials')
+  )
 }
 
-/** 409 `{error: "no_credentials"}` -- UniX creds not set yet, show the credentials modal. */
-export function isNoCredentials(err: unknown): err is ApiError {
-  return err instanceof ApiError && err.status === 409 && err.body.error === 'no_credentials'
+/** Не-5xx ошибки повторять бессмысленно (react-query retry). */
+export function isRetryable(err: unknown): boolean {
+  return !(err instanceof ApiError && err.status < 500)
 }
 
 /**
@@ -91,7 +97,8 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
 
   if (!res.ok) {
     const apiErr = new ApiError(res.status, (body as Record<string, unknown>) ?? {})
-    apiErrorEvents.dispatchEvent(
+    // Нет кредов -- штатное состояние, страница сама покажет форму входа.
+    if (!isCredentialsError(apiErr)) apiErrorEvents.dispatchEvent(
       new CustomEvent('error', { detail: `${path}: ${describeApiError(apiErr)}` }),
     )
     throw apiErr

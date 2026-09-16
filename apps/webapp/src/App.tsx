@@ -1,14 +1,10 @@
 import { NavLink, Outlet, Route, Routes } from 'react-router-dom'
-import { CreditBadge } from './components/CreditBadge'
 import { ErrorToasts } from './components/ErrorToasts'
-import { TaskProgressBar } from './components/TaskProgressBar'
 import { OnboardingGate } from './pages/Onboarding'
 import { Catalog } from './pages/Catalog'
 import { CoursePage } from './pages/Course'
-import { Lesson } from './pages/Lesson'
-import { Profile } from './pages/Profile'
 import { Settings } from './pages/Settings'
-import { Paywall } from './pages/Paywall'
+import { WeekPage } from './pages/Week'
 
 const TAB_LINK_CLASS = 'flex-1 text-center text-sm'
 
@@ -22,10 +18,7 @@ function Layout() {
         <span className="text-[17px] font-semibold tracking-tight" style={{ color: 'var(--ink)' }}>
           Uni<span style={{ color: 'var(--brand)' }}>Bot</span>
         </span>
-        <CreditBadge />
       </header>
-
-      <TaskProgressBar />
 
       <main className="flex-1">
         <Outlet />
@@ -37,9 +30,8 @@ function Layout() {
       >
         {(
           [
-            ['/catalog', 'Каталог'],
-            ['/profile', 'Профиль'],
-            ['/paywall', 'Кредиты'],
+            ['/catalog', 'Курсы'],
+            ['/settings', 'Настройки'],
           ] as const
         ).map(([to, label]) => (
           <NavLink key={to} to={to} className={TAB_LINK_CLASS}>
@@ -74,10 +66,8 @@ function App() {
         <Route element={<Layout />}>
           <Route path="/catalog" element={<Catalog />} />
           <Route path="/courses/:id" element={<CoursePage />} />
-          <Route path="/lessons/:id" element={<Lesson />} />
-          <Route path="/profile" element={<Profile />} />
+          <Route path="/courses/:courseId/weeks/:weekId" element={<WeekPage />} />
           <Route path="/settings" element={<Settings />} />
-          <Route path="/paywall" element={<Paywall />} />
         </Route>
       </Routes>
     </>

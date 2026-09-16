@@ -1,7 +1,6 @@
 """Tests for apps/api/auth.py: initData HMAC validation + the current_user dependency.
 
-There's no real router yet (Tasks 8-10 add those), so this mounts a minimal
-FastAPI app with a trivial endpoint behind ``current_user``, wiring
+Mounts a minimal FastAPI app with a trivial endpoint behind ``current_user``, wiring
 ``app.state.pool`` directly to the test ``pool`` fixture (same real local
 Postgres every other packages/db test uses) instead of going through the
 lifespan's own pool creation.
@@ -20,7 +19,6 @@ from fastapi import Depends, FastAPI
 from httpx import ASGITransport, AsyncClient
 
 from apps.api.auth import current_user
-from packages.db import ledger
 
 pytestmark = pytest.mark.asyncio
 
@@ -94,8 +92,7 @@ async def test_missing_header_401(pool):
     assert resp.status_code == 401
 
 
-async def test_valid_initdata_creates_user_with_welcome_credits(pool):
-    from packages.shared.config import WELCOME_CREDITS
+async def test_valid_initdata_creates_user(pool):
 
     app = _make_app()
     app.state.pool = pool
@@ -116,71 +113,7 @@ async def test_valid_initdata_creates_user_with_welcome_credits(pool):
     row = await pool.fetchrow("SELECT * FROM users WHERE telegram_id = $1", telegram_id)
     assert row is not None
 
-    balance = await ledger.get_balance(pool, row["id"])
-    assert balance == WELCOME_CREDITS
 
-
-async def test_second_call_does_not_double_grant_welcome_credits(pool):
-    from packages.shared.config import WELCOME_CREDITS
-
-    app = _make_app()
-    app.state.pool = pool
-
-    telegram_id = 555003
-    init_data = _build_init_data(TEST_BOT_TOKEN, {"id": telegram_id, "username": "bob"})
-
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        first = await client.get("/whoami", headers={"X-Telegram-Init-Data": init_data})
-        second = await client.get("/whoami", headers={"X-Telegram-Init-Data": init_data})
-
-    assert first.status_code == 200
-    assert second.status_code == 200
-
-    row = await pool.fetchrow("SELECT * FROM users WHERE telegram_id = $1", telegram_id)
-    balance = await ledger.get_balance(pool, row["id"])
-    assert balance == WELCOME_CREDITS
-
-
-async def test_new_user_referral_and_welcome_credits_land_together(pool, make_user):
-    """On a single successful call for a brand-new referred user, the user
-    row, the welcome-credit ledger entry, and the referral row must all be
-    present together (they now commit in one transaction; see Task 7 fix for
-    the atomicity gap this closes)."""
-    from packages.shared.config import WELCOME_CREDITS
-
-    referrer_tid = 555007
-    referrer_id = await make_user(referrer_tid)
-
-    app = _make_app()
-    app.state.pool = pool
-
-    referred_tid = 555008
-    init_data = _build_init_data(
-        TEST_BOT_TOKEN,
-        {"id": referred_tid, "username": "frank"},
-        start_param=f"ref_{referrer_tid}",
-    )
-
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        resp = await client.get("/whoami", headers={"X-Telegram-Init-Data": init_data})
-
-    assert resp.status_code == 200
-
-    referred_row = await pool.fetchrow(
-        "SELECT * FROM users WHERE telegram_id = $1", referred_tid
-    )
-    assert referred_row is not None
-
-    balance = await ledger.get_balance(pool, referred_row["id"])
-    assert balance == WELCOME_CREDITS
-
-    referral_row = await pool.fetchrow(
-        "SELECT * FROM referrals WHERE referred_id = $1", referred_row["id"]
-    )
-    assert referral_row is not None
-    assert referral_row["referrer_id"] == referrer_id
 
 
 async def test_expired_initdata_401(pool):
@@ -198,34 +131,6 @@ async def test_expired_initdata_401(pool):
 
     assert resp.status_code == 401
 
-
-async def test_referral_start_param_registers_referral(pool, make_user):
-    referrer_tid = 555005
-    referrer_id = await make_user(referrer_tid)
-
-    app = _make_app()
-    app.state.pool = pool
-
-    referred_tid = 555006
-    init_data = _build_init_data(
-        TEST_BOT_TOKEN,
-        {"id": referred_tid, "username": "dana"},
-        start_param=f"ref_{referrer_tid}",
-    )
-
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        resp = await client.get("/whoami", headers={"X-Telegram-Init-Data": init_data})
-
-    assert resp.status_code == 200
-    referred_row = await pool.fetchrow(
-        "SELECT * FROM users WHERE telegram_id = $1", referred_tid
-    )
-    referral_row = await pool.fetchrow(
-        "SELECT * FROM referrals WHERE referred_id = $1", referred_row["id"]
-    )
-    assert referral_row is not None
-    assert referral_row["referrer_id"] == referrer_id
 
 
 async def test_malformed_auth_date_401_not_500(pool):

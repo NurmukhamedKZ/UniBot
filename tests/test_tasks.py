@@ -1,19 +1,9 @@
-import json
-
 import pytest
 
 from packages.db import tasks
 
 pytestmark = pytest.mark.asyncio
 
-
-async def test_second_active_task_rejected(pool, make_user):
-    user_id = await make_user()
-
-    await tasks.enqueue(pool, user_id, "lesson", lesson_id="l1")
-
-    with pytest.raises(tasks.TaskAlreadyActiveError):
-        await tasks.enqueue(pool, user_id, "lesson", lesson_id="l2")
 
 
 async def test_different_users_can_both_have_active_tasks(pool, make_user):
@@ -69,14 +59,12 @@ async def test_finish_sets_status_and_error(pool, make_user):
     assert row["finished_at"] is not None
 
 
-async def test_update_progress(pool, make_user):
+async def test_latest_transcribe_task(pool, make_user):
     user_id = await make_user()
-    task_id = await tasks.enqueue(pool, user_id, "lesson", lesson_id="l1")
+    assert await tasks.latest_transcribe_task(pool, "kid1") is None
 
-    await tasks.update_progress(pool, task_id, {"current": 1, "total": 3})
+    await tasks.enqueue(pool, user_id, "transcribe", lesson_id="kid1")
+    newer = await tasks.enqueue(pool, user_id, "transcribe", lesson_id="kid1")
+    await tasks.enqueue(pool, user_id, "transcribe", lesson_id="kid2")
 
-    row = await pool.fetchrow("SELECT progress FROM watch_tasks WHERE id = $1", task_id)
-    progress = row["progress"]
-    if isinstance(progress, str):
-        progress = json.loads(progress)
-    assert progress == {"current": 1, "total": 3}
+    assert (await tasks.latest_transcribe_task(pool, "kid1"))["id"] == newer

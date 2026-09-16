@@ -1,19 +1,19 @@
 import { useState } from 'react'
 import { apiDelete } from '../api'
 import { CredentialsModal } from '../components/CredentialsModal'
-import { useMe, useInvalidateMe } from '../queries'
+import { useInvalidateAll, useMe } from '../queries'
 
 export function Settings() {
   const { data: me, isLoading } = useMe()
-  const invalidateMe = useInvalidateMe()
+  const invalidateAll = useInvalidateAll()
   const [showCreds, setShowCreds] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
   async function handleDelete() {
     setDeleting(true)
     try {
-      await apiDelete('/me/unix-credentials')
-      invalidateMe()
+      await apiDelete('/me/credentials')
+      invalidateAll()
     } finally {
       setDeleting(false)
     }
@@ -27,11 +27,11 @@ export function Settings() {
 
       <div className="card p-4">
         <p className="mb-1 text-[16px] font-semibold" style={{ color: 'var(--ink)' }}>
-          Данные UniX
+          Аккаунт KBTU
         </p>
         <p className="mb-4 text-sm" style={{ color: 'var(--body)' }}>
-          Пароль шифруется (Fernet) и используется только для входа на uni-x.almv.kz от вашего имени
-          во время автопросмотра. Мы не показываем и не передаём его никому.
+          Пароль шифруется и используется только для входа на uninet.kbtu.kz от вашего имени. Мы не показываем и
+          не передаём его никому.
         </p>
 
         {isLoading ? (
@@ -41,18 +41,18 @@ export function Settings() {
             <p className="mb-3 flex items-center gap-2 text-sm" style={{ color: 'var(--body)' }}>
               <span
                 className="inline-block h-2 w-2 rounded-full"
-                style={{ background: me?.unix_email_set ? 'var(--success)' : 'var(--muted)' }}
+                style={{ background: me?.credentials_set ? 'var(--success)' : 'var(--muted)' }}
                 aria-hidden
               />
-              {me?.unix_email_set ? 'Данные сохранены' : 'Не заданы'}
+              {me?.credentials_set ? me.email : 'Не задан'}
             </p>
             <div className="flex gap-2">
               <button onClick={() => setShowCreds(true)} className="btn-primary" style={{ height: 40 }}>
-                {me?.unix_email_set ? 'Изменить' : 'Указать данные'}
+                {me?.credentials_set ? 'Изменить' : 'Войти'}
               </button>
-              {me?.unix_email_set && (
+              {me?.credentials_set && (
                 <button onClick={handleDelete} disabled={deleting} className="btn-secondary" style={{ height: 40 }}>
-                  {deleting ? 'Удаляем…' : 'Удалить'}
+                  {deleting ? 'Удаляем…' : 'Выйти'}
                 </button>
               )}
             </div>

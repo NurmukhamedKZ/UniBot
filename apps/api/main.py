@@ -1,9 +1,7 @@
-"""FastAPI app skeleton for UniBot.
+"""FastAPI app for UniBot.
 
 Lifespan creates the process-wide asyncpg pool and runs migrations on startup,
-closes the pool on shutdown. No routers yet — catalog/watch/me/payments land in
-Tasks 8-10; this task only wires up the skeleton + the ``current_user`` auth
-dependency (apps/api/auth.py) so later routers can depend on it.
+closes the pool on shutdown.
 """
 
 from __future__ import annotations
@@ -11,15 +9,15 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
 logging.basicConfig(level=logging.INFO)
 from fastapi.middleware.cors import CORSMiddleware
 
-from apps.api.routers.catalog import router as catalog_router
 from apps.api.routers.me import router as me_router
-from apps.api.routers.payments import router as payments_router
-from apps.api.routers.watch import router as watch_router
+from apps.api.routers.uninet import NoCredentials, router as uninet_router
+from packages.core.uninet import InvalidCredentials, UninetUnavailable
 from packages.db.migrate import run_migrations
 from packages.db.pool import create_pool
 from packages.shared.config import WEBAPP_URL
@@ -47,10 +45,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(catalog_router)
-app.include_router(watch_router)
+app.include_router(uninet_router)
 app.include_router(me_router)
-app.include_router(payments_router)
+
+
+@app.exception_handler(NoCredentials)
+async def _no_credentials(request: Request, exc: NoCredentials):
+    return JSONResponse(status_code=409, content={"error": "no_credentials"})
+
+
+@app.exception_handler(InvalidCredentials)
+async def _bad_credentials(request: Request, exc: InvalidCredentials):
+    return JSONResponse(status_code=409, content={"error": "bad_credentials"})
+
+
+@app.exception_handler(UninetUnavailable)
+async def _uninet_unavailable(request: Request, exc: UninetUnavailable):
+    logging.getLogger(__name__).warning("uninet unavailable: %s", exc)
+    return JSONResponse(status_code=502, content={"error": "uninet_unavailable"})
 
 
 @app.get("/health")

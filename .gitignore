@@ -18,3 +18,5 @@ node_modules/
 
 # Vercel CLI project link
 .vercel
+.DS_Store
+.playwright-mcp/

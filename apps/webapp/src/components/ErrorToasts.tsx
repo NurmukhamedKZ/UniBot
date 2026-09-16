@@ -11,7 +11,7 @@ const AUTO_DISMISS_MS = 6000
 /**
  * Listens for every failed API call (apiErrorEvents, dispatched from
  * apiFetch) and renders it as a dismissible toast. Catches errors from
- * plain `useQuery` calls (useMe, courses, referral, etc.) that don't render
+ * plain `useQuery` calls (useMe, courses, etc.) that don't render
  * their own `isError` state, and network failures that never reach the
  * backend at all -- both were previously silent.
  */

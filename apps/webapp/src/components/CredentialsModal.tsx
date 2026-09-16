@@ -1,25 +1,19 @@
 import { useState, type FormEvent } from 'react'
-import { apiPut } from '../api'
-import { useInvalidateMe } from '../queries'
+import { ApiError, apiPut, isCredentialsError } from '../api'
+import { useInvalidateAll } from '../queries'
 
 interface CredentialsModalProps {
   open: boolean
   onClose: () => void
-  /** Called after credentials are saved successfully. */
-  onSaved?: () => void
 }
 
-/**
- * Shared modal for entering UniX login/password. Used by Settings (manual
- * edit) and opened automatically by Lesson/Course when POST /watch 409s
- * with no_credentials.
- */
-export function CredentialsModal({ open, onClose, onSaved }: CredentialsModalProps) {
+/** Ввод логина/пароля KBTU. Бэкенд сразу проверяет их входом в uninet. */
+export function CredentialsModal({ open, onClose }: CredentialsModalProps) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const invalidateMe = useInvalidateMe()
+  const invalidateAll = useInvalidateAll()
 
   if (!open) return null
 
@@ -28,14 +22,15 @@ export function CredentialsModal({ open, onClose, onSaved }: CredentialsModalPro
     setSaving(true)
     setError(null)
     try {
-      await apiPut('/me/unix-credentials', { email, password })
-      invalidateMe()
+      await apiPut('/me/credentials', { email, password })
       setEmail('')
       setPassword('')
-      onSaved?.()
+      invalidateAll()
       onClose()
-    } catch {
-      setError('Не удалось сохранить. Проверьте данные и попробуйте снова.')
+    } catch (err) {
+      if (isCredentialsError(err)) setError('Неверный логин или пароль KBTU.')
+      else if (err instanceof ApiError && err.status === 502) setError('uninet сейчас недоступен, попробуйте позже.')
+      else setError('Не удалось сохранить. Попробуйте снова.')
     } finally {
       setSaving(false)
     }
@@ -48,36 +43,37 @@ export function CredentialsModal({ open, onClose, onSaved }: CredentialsModalPro
         style={{ background: 'var(--card)', borderRadius: '12px 12px 0 0', borderTop: '1px solid var(--hairline)' }}
       >
         <h2 className="text-[18px] font-semibold" style={{ color: 'var(--ink)' }}>
-          Данные UniX
+          Вход KBTU
         </h2>
         <p className="mt-1 text-sm" style={{ color: 'var(--body)' }}>
-          Логин и пароль от uni-x.almv.kz нужны для автопросмотра от вашего имени. Пароль хранится в
-          зашифрованном виде и используется только для входа на UniX.
+          Тот же логин и пароль, что на uninet.kbtu.kz. Пароль хранится зашифрованным и используется только
+          для входа на uninet от вашего имени.
         </p>
         <form className="mt-4 flex flex-col gap-3" onSubmit={handleSubmit}>
           <div className="flex flex-col gap-2">
-            <label className="text-sm" style={{ color: 'var(--body)' }} htmlFor="unix-email">
+            <label className="text-sm" style={{ color: 'var(--body)' }} htmlFor="kbtu-email">
               Email
             </label>
             <input
-              id="unix-email"
+              id="kbtu-email"
               type="email"
               required
-              placeholder="email@university.kz"
+              autoComplete="username"
+              placeholder="a_student@kbtu.kz"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="field"
             />
           </div>
           <div className="flex flex-col gap-2">
-            <label className="text-sm" style={{ color: 'var(--body)' }} htmlFor="unix-password">
+            <label className="text-sm" style={{ color: 'var(--body)' }} htmlFor="kbtu-password">
               Пароль
             </label>
             <input
-              id="unix-password"
+              id="kbtu-password"
               type="password"
               required
-              placeholder="Ваш пароль от UniX"
+              autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="field"
@@ -93,7 +89,7 @@ export function CredentialsModal({ open, onClose, onSaved }: CredentialsModalPro
               Отмена
             </button>
             <button type="submit" disabled={saving} className="btn-primary flex-1">
-              {saving ? 'Сохраняем…' : 'Сохранить'}
+              {saving ? 'Проверяем…' : 'Войти'}
             </button>
           </div>
         </form>

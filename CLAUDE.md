@@ -1,13 +1,19 @@
 # UniBot
 
-Telegram Mini App: автопросмотр лекций UniX (Playwright + LLM) за кредиты
-+ бесплатные транскрибы и ответы на тесты. Полный контекст: docs/plan.md
-(секция «Контекст для ИИ-агентов») и docs/spec.md.
+Бесплатный Telegram Mini App для студентов KBTU: отмечает видеолекции на
+uninet.kbtu.kz просмотренными и делает транскрибы лекций. Как устроен сайт
+(вход, API, видео) — docs/uninet.md. Старый продукт (UniX, кредиты, оплата,
+Playwright/LLM-тесты) — в legacy/, не собирается и не тестируется.
 
-## Правила
-- Логику Playwright/LLM в packages/core/*.py НЕ менять — только вызовы БД.
-- Кредит списывается только за успешно завершённый урок.
-- Запуск: docker compose up -d --build. Тесты: pytest tests/ -v.
+## Устройство
+- `packages/core/uninet.py` — HTTP-клиент uninet (Keycloak PKCE-логин, курсы,
+  недели, progress) + аудио из Kinescope. `packages/core/transcribe.py` — ffmpeg → OpenAI.
+- api: каталог читается вживую из uninet по кредам юзера (у каждого свои курсы),
+  автопросмотр — синхронный POST progress. Креды — Fernet в `users.kbtu_*`.
+- worker: только очередь `watch_tasks type='transcribe'`, `lesson_id` = id видео Kinescope.
+  Транскрибы кэшируются в `transcripts` и общие для всех.
+- Запуск: docker compose up -d --build. Тесты: pytest tests/ -v (нужен Postgres,
+  `TEST_DATABASE_URL`, по умолчанию localhost:5433).
 - Прод: Contabo VPS (общий с другими проектами), вход через хостовый nginx,
   api на 127.0.0.1:8001. Домен API: api.workkeldi.com; фронтенд — на Vercel.
 
@@ -28,7 +34,7 @@ Telegram Mini App: автопросмотр лекций UniX (Playwright + LLM)
   после `vercel deploy --prod` никогда не долетает.
 - `apps/webapp/vercel.json` держит SPA-фолбэк (`rewrites` → `/index.html`).
   Без него прямой заход/reload на любой путь кроме `/` (BrowserRouter,
-  `/paywall`, `/lessons/:id` и т.п.) даёт 404 от Vercel.
+  `/courses/:id/weeks/:weekId` и т.п.) даёт 404 от Vercel.
 - `docker-compose.yml`'s `POSTGRES_PASSWORD` и пароль в `.env`'s
   `DATABASE_URL` — синхронизировать вручную (сервис `postgres` не читает
   `.env`, только hardcoded env в compose). Если разъехались уже ПОСЛЕ
@@ -36,7 +42,7 @@ Telegram Mini App: автопросмотр лекций UniX (Playwright + LLM)
   `ALTER USER ... WITH PASSWORD`, либо `docker compose down -v` (только
   пока в БД нет данных, которые жалко терять).
 
-## Telegram initData
+## Telegram
 - НЕ читать `WebApp.initData` из `@twa-dev/sdk` — пакет не обновлялся больше
   года и содержит свою устаревшую копию `telegram-web-app.js`, которая на
   актуальных клиентах Telegram (проверено: Desktop 9.6) оставляет
@@ -47,11 +53,13 @@ Telegram Mini App: автопросмотр лекций UniX (Playwright + LLM)
   `retrieveRawInitData()` (см. `apps/webapp/src/telegram.ts`), она
   перебирает несколько источников (location.href → Performance Navigation
   Timing API → localStorage) и переживает `history.replaceState`.
+- Внешние ссылки — `openExternalLink` из `telegram.ts`, не `WebApp.openLink`
+  (тот же устаревший bridge, молча не срабатывает).
+- Локально Mini App проверяется подставным `#tgWebAppData=...`: bridge требует
+  в initData `signature` и `user.first_name`, и нужна полная загрузка страницы
+  (смена только хэша не пересоздаёт performance entry).
 
 **SSH access:**
 ```bash
 ssh root@109.199.125.111
 ```
-
-@docs/plan.md
-@docs/spec.md
