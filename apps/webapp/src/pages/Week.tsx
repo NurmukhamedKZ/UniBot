@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useParams } from 'react-router-dom'
 import { apiGet, apiPost } from '../api'
 import { QueryState } from '../components/QueryState'
@@ -10,15 +10,70 @@ function formatDuration(sec: number) {
   return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`
 }
 
+/**
+ * Копирование, которое работает в WebView Telegram: Clipboard API бывает
+ * недоступен или заблокирован, тогда -- старый путь через textarea + execCommand.
+ * Вызывать синхронно из обработчика клика (нужен user gesture).
+ */
+function copyText(text: string): boolean {
+  try {
+    const ta = document.createElement('textarea')
+    ta.value = text
+    ta.setAttribute('readonly', '')
+    ta.style.position = 'fixed'
+    ta.style.opacity = '0'
+    document.body.appendChild(ta)
+    ta.select()
+    ta.setSelectionRange(0, text.length)
+    const ok = document.execCommand('copy')
+    ta.remove()
+    if (ok) return true
+  } catch {
+    // ниже попробуем Clipboard API
+  }
+  navigator.clipboard?.writeText(text).catch(() => {})
+  return !!navigator.clipboard
+}
+
+function useCopied() {
+  const [copied, setCopied] = useState(false)
+  return [
+    copied,
+    (text: string) => {
+      if (copyText(text)) {
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+      }
+    },
+  ] as const
+}
+
+const PENDING = ['queued', 'running']
+const isPending = (s?: TranscriptState) => PENDING.includes(s?.status ?? '')
+
+const transcriptKey = (kid: string) => ['transcript', kid]
+
 export function WeekPage() {
   const { courseId, weekId } = useParams<{ courseId: string; weekId: string }>()
   const qc = useQueryClient()
   const [watching, setWatching] = useState(false)
+  const [requested, setRequested] = useState<Set<string>>(new Set())
+  const [copiedAll, copyAll] = useCopied()
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['week', weekId],
     queryFn: () => apiGet<WeekDetail>(`/weeks/${weekId}`),
     enabled: !!weekId,
+  })
+  const videos = data?.videos ?? []
+
+  const transcripts = useQueries({
+    queries: videos.map((v) => ({
+      queryKey: transcriptKey(v.kinescope_id),
+      queryFn: () => apiGet<TranscriptState>(`/videos/${v.kinescope_id}/transcript`),
+      enabled: v.has_transcript || requested.has(v.kinescope_id),
+      refetchInterval: (q: { state: { data?: TranscriptState } }) => (isPending(q.state.data) ? 5000 : false),
+    })),
   })
 
   async function watchWeek() {
@@ -31,7 +86,29 @@ export function WeekPage() {
     }
   }
 
-  const allDone = data?.videos.every((v) => v.completed)
+  async function requestTranscripts(targets: Video[]) {
+    setRequested((prev) => new Set([...prev, ...targets.map((v) => v.kinescope_id)]))
+    await Promise.all(
+      targets.map(async (v) => {
+        const res = await apiPost<TranscriptState>(`/videos/${v.kinescope_id}/transcribe`)
+        qc.setQueryData(transcriptKey(v.kinescope_id), res)
+      }),
+    )
+  }
+
+  const texts = transcripts.map((t) => t.data?.transcript ?? null)
+  const missing = videos.filter((_, i) => !texts[i] && !isPending(transcripts[i].data))
+  const anyPending = transcripts.some((t) => isPending(t.data))
+  const allReady = videos.length > 0 && texts.every(Boolean)
+  const allWatched = videos.every((v) => v.completed)
+
+  function copyAllTranscripts() {
+    copyAll(
+      videos
+        .map((v, i) => `<Start Lesson ${i + 1}>\n${v.title}\n\n${texts[i]}\n</End Lesson ${i + 1}>`)
+        .join('\n\n'),
+    )
+  }
 
   return (
     <div className="px-4 py-5">
@@ -44,9 +121,23 @@ export function WeekPage() {
       {data && (
         <>
           <div className="mb-5 flex flex-col gap-2">
-            <button onClick={watchWeek} disabled={watching || allDone} className="btn-primary w-full">
-              {allDone ? 'Все видео просмотрены' : watching ? 'Отмечаем…' : 'Просмотреть все видео недели'}
+            <button onClick={watchWeek} disabled={watching || allWatched} className="btn-primary w-full">
+              {allWatched ? 'Все видео просмотрены' : watching ? 'Отмечаем…' : 'Просмотреть все видео недели'}
             </button>
+            {videos.length > 0 &&
+              (allReady ? (
+                <button onClick={copyAllTranscripts} className="btn-secondary w-full">
+                  {copiedAll ? 'Скопировано ✓' : 'Скопировать все транскрибы'}
+                </button>
+              ) : (
+                <button
+                  onClick={() => requestTranscripts(missing)}
+                  disabled={missing.length === 0}
+                  className="btn-secondary w-full"
+                >
+                  {missing.length === 0 && anyPending ? 'Транскрибируем все…' : 'Транскрибировать все лекции'}
+                </button>
+              ))}
             <button
               onClick={() =>
                 openExternalLink(`https://uninet.kbtu.kz/student/course-materials/${courseId}/${data.week.weekNumber}`)
@@ -57,9 +148,9 @@ export function WeekPage() {
             </button>
           </div>
 
-          {data.videos.length === 0 && <p style={{ color: 'var(--muted)' }}>На этой неделе нет видео.</p>}
+          {videos.length === 0 && <p style={{ color: 'var(--muted)' }}>На этой неделе нет видео.</p>}
           <ul className="flex flex-col gap-3">
-            {data.videos.map((video) => (
+            {videos.map((video, i) => (
               <li key={video.id} className="card p-4">
                 <div className="mb-3 flex items-start justify-between gap-3">
                   <span className="text-sm" style={{ color: 'var(--ink)' }}>
@@ -73,7 +164,7 @@ export function WeekPage() {
                     {formatDuration(video.duration_sec)}
                   </span>
                 </div>
-                <Transcript video={video} />
+                <Transcript state={transcripts[i].data} onRequest={() => requestTranscripts([video])} />
               </li>
             ))}
           </ul>
@@ -83,63 +174,32 @@ export function WeekPage() {
   )
 }
 
-function downloadText(name: string, text: string) {
-  const url = URL.createObjectURL(new Blob([text], { type: 'text/plain' }))
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `${name}.txt`.replace(/[/\\?%*:|"<>]/g, '_')
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  URL.revokeObjectURL(url)
-}
-
-const PENDING = ['queued', 'running']
-
-function Transcript({ video }: { video: Video }) {
-  const qc = useQueryClient()
-  const key = ['transcript', video.kinescope_id]
-  const [requested, setRequested] = useState(false)
+function Transcript({ state, onRequest }: { state?: TranscriptState; onRequest: () => void }) {
   const [expanded, setExpanded] = useState(false)
+  const [copied, copy] = useCopied()
 
-  const { data } = useQuery({
-    queryKey: key,
-    queryFn: () => apiGet<TranscriptState>(`/videos/${video.kinescope_id}/transcript`),
-    enabled: video.has_transcript || requested,
-    refetchInterval: (q) => (PENDING.includes(q.state.data?.status ?? '') ? 5000 : false),
-  })
-
-  async function request() {
-    const res = await apiPost<TranscriptState>(`/videos/${video.kinescope_id}/transcribe`)
-    qc.setQueryData(key, res)
-    setRequested(true)
-  }
-
-  if (data?.transcript) {
+  if (state?.transcript) {
+    const text = state.transcript
     return (
       <div className="flex flex-col gap-2">
         {expanded && (
-          <p className="whitespace-pre-wrap text-sm" style={{ color: 'var(--body)' }}>
-            {data.transcript}
+          <p className="select-text whitespace-pre-wrap text-sm" style={{ color: 'var(--body)' }}>
+            {text}
           </p>
         )}
         <div className="flex gap-2">
           <button onClick={() => setExpanded(!expanded)} className="btn-secondary flex-1" style={{ height: 36 }}>
-            {expanded ? 'Скрыть текст' : 'Транскриб'}
+            {expanded ? 'Скрыть текст' : 'Показать текст'}
           </button>
-          <button
-            onClick={() => downloadText(video.title, data.transcript!)}
-            className="btn-secondary flex-1"
-            style={{ height: 36 }}
-          >
-            Скачать .txt
+          <button onClick={() => copy(text)} className="btn-secondary flex-1" style={{ height: 36 }}>
+            {copied ? 'Скопировано ✓' : 'Скопировать'}
           </button>
         </div>
       </div>
     )
   }
 
-  if (PENDING.includes(data?.status ?? '')) {
+  if (isPending(state)) {
     return (
       <button disabled className="btn-secondary w-full" style={{ height: 36 }}>
         Транскрибируем… ~1 мин
@@ -148,8 +208,8 @@ function Transcript({ video }: { video: Video }) {
   }
 
   return (
-    <button onClick={request} className="btn-secondary w-full" style={{ height: 36 }}>
-      {data?.status === 'failed' ? 'Не получилось — повторить' : 'Сделать транскриб'}
+    <button onClick={onRequest} className="btn-secondary w-full" style={{ height: 36 }}>
+      {state?.status === 'failed' ? 'Не получилось — повторить' : 'Сделать транскриб'}
     </button>
   )
 }
