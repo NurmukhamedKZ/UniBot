@@ -46,8 +46,7 @@ async def pool(_session_pool):
     """Function-scoped pool with a clean set of tables for every test."""
     async with _session_pool.acquire() as conn:
         await conn.execute(
-            "TRUNCATE uninet_courses, uninet_weeks, credit_ledger, referrals, payments, watch_tasks, "
-            "questions, transcripts, lessons, courses, users CASCADE"
+            "TRUNCATE uninet_courses, uninet_weeks, watch_tasks, transcripts, users CASCADE"
         )
     return _session_pool
 

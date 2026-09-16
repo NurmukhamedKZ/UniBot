@@ -5,23 +5,16 @@ from __future__ import annotations
 import asyncpg
 
 
-async def enqueue(
-    pool: asyncpg.Pool,
-    user_id,
-    type: str,
-    lesson_id: str | None = None,
-    course_id: str | None = None,
-):
+async def enqueue(pool: asyncpg.Pool, user_id, type: str, lesson_id: str | None = None):
     return await pool.fetchval(
         """
-        INSERT INTO watch_tasks (user_id, type, lesson_id, course_id)
-        VALUES ($1, $2, $3, $4)
+        INSERT INTO watch_tasks (user_id, type, lesson_id)
+        VALUES ($1, $2, $3)
         RETURNING id
         """,
         user_id,
         type,
         lesson_id,
-        course_id,
     )
 
 
