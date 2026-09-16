@@ -14,33 +14,25 @@ Playwright/LLM-тесты) — в legacy/, не собирается и не т�
   Транскрибы кэшируются в `transcripts` и общие для всех.
 - Запуск: docker compose up -d --build. Тесты: pytest tests/ -v (нужен Postgres,
   `TEST_DATABASE_URL`, по умолчанию localhost:5433).
-- Прод: Contabo VPS (общий с другими проектами), вход через хостовый nginx,
-  api на 127.0.0.1:8001. Домен API: api.workkeldi.com; фронтенд — на Vercel.
 
-## Деплой — архитектура и грабли
-- webapp → **Vercel**, проект `unibot-webapp`, root dir `apps/webapp`.
-  api/bot/worker → **VPS** в `docker compose`, домен `api.workkeldi.com`
-  через хостовый nginx как чистый reverse-proxy на `127.0.0.1:8001` (без
-  раздачи статики, без `/api`-префикса — роуты в `apps/api/routers/*.py`
-  объявлены без него).
-- `WEBAPP_URL` в `.env` на VPS = URL вебаппа на Vercel (нужен для CORS
-  allowlist в `apps/api/main.py` и для кнопки бота) — НЕ домен VPS.
-- Vercel CLI деплоить только из **корня репо** (`.vercel/project.json` там
-  → `unibot-webapp`). Запуск `vercel deploy` из `apps/webapp` без линка
-  создаёт отдельный левый проект вместо деплоя в существующий.
-- BotFather → Menu Button / Mini App URL должен быть стабильный домен-алиас
-  (`https://unibot-webapp.vercel.app`), НЕ замороженный URL конкретного
-  деплоя (`unibot-webapp-<hash>-....vercel.app`) — на такой URL новый код
-  после `vercel deploy --prod` никогда не долетает.
-- `apps/webapp/vercel.json` держит SPA-фолбэк (`rewrites` → `/index.html`).
-  Без него прямой заход/reload на любой путь кроме `/` (BrowserRouter,
-  `/courses/:id/weeks/:weekId` и т.п.) даёт 404 от Vercel.
-- `docker-compose.yml`'s `POSTGRES_PASSWORD` и пароль в `.env`'s
-  `DATABASE_URL` — синхронизировать вручную (сервис `postgres` не читает
-  `.env`, только hardcoded env в compose). Если разъехались уже ПОСЛЕ
-  первого `up` — пароль внутри тома не поменяется сам, нужен либо
-  `ALTER USER ... WITH PASSWORD`, либо `docker compose down -v` (только
-  пока в БД нет данных, которые жалко терять).
+## Деплой
+- **Railway** (с 2026-09-16), проект `UniBot`: сервисы `api`, `bot`, `worker` (Dockerfile
+  через переменную `RAILWAY_DOCKERFILE_PATH=Dockerfile.<svc>`) + `Postgres`
+  (`DATABASE_URL=${{Postgres.DATABASE_URL}}`). Деплой: `railway up --service <svc> --detach`
+  из корня репо (GitHub-автодеплоя нет). API: `https://api-production-e1f33.up.railway.app`, порт 8000.
+  Миграции гоняет api на старте; worker, стартовав раньше, падает один раз и перезапускается.
+- Старый стек на Contabo VPS (`/home/app/unibot`, api.workkeldi.com) остановлен
+  `docker compose stop`, не удалён. НЕ запускать бота в двух местах: один токен →
+  TelegramConflictError на getUpdates.
+- webapp → **Vercel**, проект `unibot-webapp`, root dir `apps/webapp`, **автодеплой из
+  push в main**. `VITE_API_URL` (production env на Vercel) = домен api на Railway;
+  `WEBAPP_URL` в переменных Railway = `https://unibot-webapp.vercel.app` (CORS + кнопка бота).
+- Vercel CLI — только из **корня репо** (`.vercel/project.json` → `unibot-webapp`),
+  иначе создастся левый проект.
+- BotFather → Mini App URL — стабильный алиас `https://unibot-webapp.vercel.app`,
+  не URL конкретного деплоя.
+- `apps/webapp/vercel.json` держит SPA-фолбэк (`rewrites` → `/index.html`), без него
+  reload на `/courses/:id/weeks/:weekId` даёт 404.
 
 ## Telegram
 - НЕ читать `WebApp.initData` из `@twa-dev/sdk` — пакет не обновлялся больше
@@ -59,7 +51,4 @@ Playwright/LLM-тесты) — в legacy/, не собирается и не т�
   в initData `signature` и `user.first_name`, и нужна полная загрузка страницы
   (смена только хэша не пересоздаёт performance entry).
 
-**SSH access:**
-```bash
-ssh root@109.199.125.111
-```
+**SSH (старый VPS):** `ssh -i ~/.ssh/id_ed25519_hermes root@109.199.125.111`
