@@ -10,10 +10,11 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
 
 import asyncpg
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from apps.api.auth import current_user
@@ -60,16 +61,45 @@ async def list_courses(request: Request, user=Depends(current_user)):
     return courses
 
 
+async def _cache_week(pool: asyncpg.Pool, week_id: int, data: dict) -> tuple[dict, list[dict]]:
+    """Ответ uninet по неделе -> (week, videos) для API; попутно кладёт неделю в кэш."""
+    videos = [
+        {
+            "id": v["id"],
+            "title": v["title"],
+            "duration_sec": v["durationSec"],
+            "completed": v["completed"],
+            "kinescope_id": uninet.kinescope_id(v["url"]),
+        }
+        for v in uninet.week_videos(data)
+    ]
+    await catalog.cache_week(pool, week_id, data["week"], [{**v, "completed": False} for v in videos])
+    return data["week"], videos
+
+
+async def _cache_missing_weeks(pool: asyncpg.Pool, s: uninet.Uninet, weeks: list[dict]) -> None:
+    """Чтобы без кредов были видны все недели курса, а не только открытые кем-то вручную."""
+    cached = await catalog.cached_week_ids(pool, [w["id"] for w in weeks])
+    for w in weeks:  # по одной, не долбим uninet параллельно
+        if w["unlocked"] and w["id"] not in cached:
+            try:
+                await _cache_week(pool, w["id"], await s.week(w["id"]))
+            except Exception:
+                logging.getLogger(__name__).warning("caching week %s failed", w["id"], exc_info=True)
+
+
 @router.get("/courses/{course_id}")
-async def get_course(course_id: int, request: Request, user=Depends(current_user)):
+async def get_course(course_id: int, request: Request, background: BackgroundTasks, user=Depends(current_user)):
     pool = _pool(request)
     if not _has_credentials(user):
         weeks = await catalog.cached_course_weeks(pool, course_id)
         if weeks is None:
             raise NoCredentials()
         return {"course": {"id": course_id}, "weeks": weeks}
-    data = await _session(user).course(course_id)
+    s = _session(user)
+    data = await s.course(course_id)
     await catalog.cache_course_weeks(pool, course_id, data["weeks"])
+    background.add_task(_cache_missing_weeks, pool, s, data["weeks"])
     return {"course": data["course"], "weeks": data["weeks"]}
 
 
@@ -77,19 +107,7 @@ async def get_course(course_id: int, request: Request, user=Depends(current_user
 async def get_week(week_id: int, request: Request, user=Depends(current_user)):
     pool = _pool(request)
     if _has_credentials(user):
-        data = await _session(user).week(week_id)
-        week = data["week"]
-        videos = [
-            {
-                "id": v["id"],
-                "title": v["title"],
-                "duration_sec": v["durationSec"],
-                "completed": v["completed"],
-                "kinescope_id": uninet.kinescope_id(v["url"]),
-            }
-            for v in uninet.week_videos(data)
-        ]
-        await catalog.cache_week(pool, week_id, week, [{**v, "completed": False} for v in videos])
+        week, videos = await _cache_week(pool, week_id, await _session(user).week(week_id))
     else:
         cached = await catalog.cached_week(pool, week_id)
         if cached is None:

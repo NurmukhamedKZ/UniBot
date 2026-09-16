@@ -86,9 +86,13 @@ async def cached_course_weeks(pool: asyncpg.Pool, course_id: int) -> list[dict] 
     if raw is None:
         return None
     weeks = json.loads(raw)
-    rows = await pool.fetch("SELECT id FROM uninet_weeks WHERE id = ANY($1::int[])", [w["id"] for w in weeks])
-    ids = {r["id"] for r in rows}
+    ids = await cached_week_ids(pool, [w["id"] for w in weeks])
     return [w for w in weeks if w["id"] in ids]
+
+
+async def cached_week_ids(pool: asyncpg.Pool, week_ids: list[int]) -> set[int]:
+    rows = await pool.fetch("SELECT id FROM uninet_weeks WHERE id = ANY($1::int[])", week_ids)
+    return {r["id"] for r in rows}
 
 
 async def cached_week(pool: asyncpg.Pool, week_id: int) -> tuple[dict, list[dict]] | None:

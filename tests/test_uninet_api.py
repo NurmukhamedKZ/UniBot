@@ -134,8 +134,8 @@ async def test_anonymous_reads_cached_catalog(client, pool):
     assert (await client.get("/courses")).json() == []
     await client.put("/me/credentials", json={"email": "s@kbtu.kz", "password": "pw"})
     await client.get("/courses")
-    await client.get("/courses/55")
-    await client.get("/weeks/1")  # неделю 2 никто не открывал
+    await client.get("/courses/55")  # открытые недели 1 и 2 кэшируются в фоне
+    await pool.execute("DELETE FROM uninet_weeks WHERE id = 2")  # будто неделю 2 не закэшировали
     await catalog.save_transcript(pool, "aaaaaaaaaa", "text")
     await client.delete("/me/credentials")
 
