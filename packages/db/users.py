@@ -50,8 +50,21 @@ async def set_credentials(
 ) -> None:
     """Set (or, passing ``None``/``None``, clear) a user's KBTU credentials."""
     await pool.execute(
-        "UPDATE users SET kbtu_email = $2, kbtu_password_enc = $3 WHERE id = $1",
+        # wsp_open — состояние старого аккаунта; для новых кредов уведомление должно прийти заново.
+        "UPDATE users SET kbtu_email = $2, kbtu_password_enc = $3, wsp_open = false WHERE id = $1",
         user_id,
         email,
         password_enc,
     )
+
+
+async def with_credentials(pool: asyncpg.Pool) -> list[asyncpg.Record]:
+    """Юзеры с сохранёнными кредами KBTU — их wsp проверяет worker."""
+    return await pool.fetch(
+        "SELECT id, telegram_id, kbtu_email, kbtu_password_enc, wsp_open FROM users "
+        "WHERE kbtu_email IS NOT NULL AND kbtu_password_enc IS NOT NULL"
+    )
+
+
+async def set_wsp_open(pool: asyncpg.Pool, user_id, is_open: bool) -> None:
+    await pool.execute("UPDATE users SET wsp_open = $2 WHERE id = $1", user_id, is_open)

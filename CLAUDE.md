@@ -12,8 +12,12 @@ Playwright/LLM-тесты) — в legacy/, не собирается и не т�
   в `uninet_courses`/`uninet_weeks`; без кредов отдаётся этот кэш (готовые транскрибы),
   новые транскрибы и автопросмотр (синхронный POST progress) — только с кредами
   (409 no_credentials). Креды — Fernet в `users.kbtu_*`.
-- worker: только очередь `watch_tasks type='transcribe'`, `lesson_id` = id видео Kinescope.
+- worker: очередь `watch_tasks type='transcribe'`, `lesson_id` = id видео Kinescope.
   Транскрибы кэшируются в `transcripts` и общие для всех.
+- worker же раз в 2 мин логинится в wsp.kbtu.kz/RegistrationOnline (`packages/core/wsp.py`,
+  Vaadin UIDL по HTTP, логин = email до @) за каждого юзера с кредами; нет заглушки
+  «Нет доступных дисциплин» → бот шлёт уведомление (один раз на открытие, флаг `users.wsp_open`).
+  wsp не отдаёт промежуточный сертификат — он лежит в `packages/core/sectigo_dv_r36.pem`.
 - Запуск: docker compose up -d --build. Тесты: pytest tests/ -v (нужен Postgres,
   `TEST_DATABASE_URL`, по умолчанию localhost:5433).
 

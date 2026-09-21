@@ -1,7 +1,11 @@
-"""Worker: очередь ``watch_tasks`` с ``type='transcribe'``.
+"""Worker: очередь ``watch_tasks`` с ``type='transcribe'`` + слежка за wsp.kbtu.kz.
 
 ``lesson_id`` задачи — id видео Kinescope. Кредов студента не нужно: аудио
 берётся с Kinescope напрямую (см. packages/core/uninet.py).
+
+Слежка: раз в ``ATTENDANCE_INTERVAL_SECONDS`` у каждого юзера с кредами
+проверяется «Отметка посещения» на wsp; при переходе закрыто -> открыто бот
+шлёт уведомление (см. packages/core/wsp.py).
 """
 
 from __future__ import annotations
@@ -9,14 +13,24 @@ from __future__ import annotations
 import asyncio
 import logging
 
+from aiogram import Bot
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+
+from packages.core import wsp
 from packages.core.transcribe import transcribe
-from packages.db import catalog, tasks
+from packages.core.uninet import InvalidCredentials, UninetUnavailable
+from packages.db import catalog, tasks, users
 from packages.db.pool import create_pool
+from packages.shared.config import TELEGRAM_TOKEN
+from packages.shared.crypto import decrypt_password
 
 logger = logging.getLogger(__name__)
 
 MAX_CONCURRENT = 2  # ffmpeg + загрузка в OpenAI; VPS общий
 POLL_INTERVAL_SECONDS = 3
+ATTENDANCE_INTERVAL_SECONDS = 120  # окно отметки на паре короткое
+ATTENDANCE_CONCURRENCY = 5
+WSP_HEADERS = {"Отметка посещения", "Attendance mark"}
 
 
 async def run_transcribe(pool, task) -> None:
@@ -32,10 +46,51 @@ async def run_transcribe(pool, task) -> None:
         await tasks.finish(pool, task["id"], "failed", error=str(exc)[:500])
 
 
+async def check_attendance(pool, bot: Bot, user) -> None:
+    try:
+        page = await wsp.registration_texts(user["kbtu_email"], decrypt_password(user["kbtu_password_enc"]))
+    except (InvalidCredentials, UninetUnavailable) as exc:
+        logger.warning("wsp check failed for user %s: %r", user["id"], exc)
+        return
+    is_open = wsp.is_open(page)
+    if is_open and not user["wsp_open"]:
+        details = "\n".join(t for t in page if t not in WSP_HEADERS)
+        await bot.send_message(
+            user["telegram_id"],
+            f"🔔 Открылась отметка посещения на wsp.kbtu.kz\n\n{details}".strip(),
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="Отметиться", url=wsp.BASE)]]),
+        )
+        logger.info("attendance open for user %s", user["id"])
+    if is_open != user["wsp_open"]:
+        await users.set_wsp_open(pool, user["id"], is_open)
+
+
+async def watch_attendance(pool, bot: Bot) -> None:
+    semaphore = asyncio.Semaphore(ATTENDANCE_CONCURRENCY)
+
+    async def guarded(user):
+        async with semaphore:
+            try:
+                await check_attendance(pool, bot, user)
+            except Exception:
+                logger.exception("attendance check crashed for user %s", user["id"])
+
+    while True:
+        try:
+            await asyncio.gather(*(guarded(u) for u in await users.with_credentials(pool)))
+        except Exception:
+            logger.exception("attendance round failed")
+        await asyncio.sleep(ATTENDANCE_INTERVAL_SECONDS)
+
+
 async def main() -> None:
     logging.basicConfig(level=logging.INFO)
     pool = await create_pool()
     logger.info("requeued %d stale running task(s)", await tasks.requeue_stale_running(pool))
+
+    bot = Bot(TELEGRAM_TOKEN)
+    attendance = asyncio.create_task(watch_attendance(pool, bot))
 
     semaphore = asyncio.Semaphore(MAX_CONCURRENT)
     running: set[asyncio.Task] = set()
@@ -61,7 +116,9 @@ async def main() -> None:
             running.add(job)
             job.add_done_callback(running.discard)
     finally:
-        await asyncio.gather(*running, return_exceptions=True)
+        attendance.cancel()
+        await asyncio.gather(attendance, *running, return_exceptions=True)
+        await bot.session.close()
         await pool.close()
 
 
