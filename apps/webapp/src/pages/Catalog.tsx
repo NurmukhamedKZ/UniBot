@@ -5,7 +5,23 @@ import { apiGet } from '../api'
 import { CredentialsModal } from '../components/CredentialsModal'
 import { QueryState } from '../components/QueryState'
 import { useMe } from '../queries'
-import type { Course } from '../types'
+import type { Course, CoursesResponse } from '../types'
+
+function CourseCard({ course }: { course: Course }) {
+  return (
+    <Link to={`/courses/${course.id}`} className="card flex flex-col gap-1 p-4 active:scale-[0.99]">
+      <span className="num text-xs" style={{ color: 'var(--muted)' }}>
+        {course.code}
+      </span>
+      <span className="text-[15px] font-medium" style={{ color: 'var(--ink)' }}>
+        {course.name}
+      </span>
+      <span className="text-xs" style={{ color: 'var(--body)' }}>
+        {course.teacher}
+      </span>
+    </Link>
+  )
+}
 
 export function Catalog() {
   const { data: me } = useMe()
@@ -13,8 +29,10 @@ export function Catalog() {
   const [loginOpen, setLoginOpen] = useState(false)
   const { data, isLoading, error } = useQuery({
     queryKey: ['courses'],
-    queryFn: () => apiGet<Course[]>('/courses'),
+    queryFn: () => apiGet<CoursesResponse>('/courses'),
   })
+  const mine = data?.mine
+  const others = data?.others ?? []
 
   return (
     <div className="px-4 py-5">
@@ -43,23 +61,30 @@ export function Catalog() {
       )}
 
       <QueryState isLoading={isLoading} error={error} />
-      {data && data.length === 0 && !anonymous && <p style={{ color: 'var(--muted)' }}>В этом семестре курсов нет.</p>}
+      {mine && mine.length === 0 && <p style={{ color: 'var(--muted)' }}>В этом семестре курсов нет.</p>}
 
-      <div className="flex flex-col gap-3">
-        {data?.map((course) => (
-          <Link key={course.id} to={`/courses/${course.id}`} className="card flex flex-col gap-1 p-4 active:scale-[0.99]">
-            <span className="num text-xs" style={{ color: 'var(--muted)' }}>
-              {course.code}
-            </span>
-            <span className="text-[15px] font-medium" style={{ color: 'var(--ink)' }}>
-              {course.name}
-            </span>
-            <span className="text-xs" style={{ color: 'var(--body)' }}>
-              {course.teacher}
-            </span>
-          </Link>
-        ))}
-      </div>
+      {mine && (
+        <div className="mb-3 flex flex-col gap-3">
+          {mine.map((course) => (
+            <CourseCard key={course.id} course={course} />
+          ))}
+        </div>
+      )}
+
+      {others.length > 0 && (
+        <>
+          {mine && (
+            <h2 className="mb-3 mt-5 text-sm font-medium" style={{ color: 'var(--muted)' }}>
+              Остальные курсы в базе
+            </h2>
+          )}
+          <div className="flex flex-col gap-3">
+            {others.map((course) => (
+              <CourseCard key={course.id} course={course} />
+            ))}
+          </div>
+        </>
+      )}
     </div>
   )
 }

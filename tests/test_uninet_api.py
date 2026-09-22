@@ -131,7 +131,7 @@ async def test_transcribe_cached_enqueue_and_dedup(client, pool):
 
 
 async def test_anonymous_reads_cached_catalog(client, pool):
-    assert (await client.get("/courses")).json() == []
+    assert (await client.get("/courses")).json() == {"mine": None, "others": []}
     await client.put("/me/credentials", json={"email": "s@kbtu.kz", "password": "pw"})
     await client.get("/courses")
     await client.get("/courses/55")  # открытые недели 1 и 2 кэшируются в фоне
@@ -139,7 +139,7 @@ async def test_anonymous_reads_cached_catalog(client, pool):
     await catalog.save_transcript(pool, "aaaaaaaaaa", "text")
     await client.delete("/me/credentials")
 
-    assert [c["id"] for c in (await client.get("/courses")).json()] == [55]
+    assert [c["id"] for c in (await client.get("/courses")).json()["others"]] == [55]
     assert [w["id"] for w in (await client.get("/courses/55")).json()["weeks"]] == [1]
     week = (await client.get("/weeks/1")).json()
     assert [(v["kinescope_id"], v["completed"], v["has_transcript"]) for v in week["videos"]] == [
@@ -148,3 +148,12 @@ async def test_anonymous_reads_cached_catalog(client, pool):
     assert (await client.get("/weeks/2")).json() == {"error": "no_credentials"}
     assert (await client.get("/courses/99")).status_code == 409
     assert (await client.post("/weeks/1/watch")).status_code == 409
+
+
+async def test_logged_in_courses_include_others_from_cache(client, pool):
+    await catalog.cache_courses(pool, [{"id": 88, "code": "MATH", "name": "Algebra", "teacher": "X", "department": "D"}])
+    await client.put("/me/credentials", json={"email": "s@kbtu.kz", "password": "pw"})
+
+    body = (await client.get("/courses")).json()
+    assert [c["id"] for c in body["mine"]] == [55]
+    assert [c["id"] for c in body["others"]] == [88]  # чужой курс из кэша, а не только свои

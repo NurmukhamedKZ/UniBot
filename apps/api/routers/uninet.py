@@ -53,12 +53,15 @@ def _kid(kid: str) -> str:
 
 @router.get("/courses")
 async def list_courses(request: Request, user=Depends(current_user)):
+    """Свои курсы (если есть креды) + все остальные, что уже закэшированы в базе."""
     pool = _pool(request)
     if not _has_credentials(user):
-        return await catalog.cached_courses(pool)
+        return {"mine": None, "others": await catalog.cached_courses(pool)}
     courses = await _session(user).courses()
     await catalog.cache_courses(pool, courses)
-    return courses
+    mine_ids = {c["id"] for c in courses}
+    others = [c for c in await catalog.cached_courses(pool) if c["id"] not in mine_ids]
+    return {"mine": courses, "others": others}
 
 
 async def _cache_week(pool: asyncpg.Pool, week_id: int, data: dict) -> tuple[dict, list[dict]]:

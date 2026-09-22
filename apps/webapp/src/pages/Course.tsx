@@ -4,7 +4,7 @@ import { Link, useParams } from 'react-router-dom'
 import { apiGet, apiPost, isCredentialsError } from '../api'
 import { CredentialsModal } from '../components/CredentialsModal'
 import { QueryState } from '../components/QueryState'
-import type { Course, CourseDetail } from '../types'
+import type { CoursesResponse, CourseDetail } from '../types'
 
 export function CoursePage() {
   const { id } = useParams<{ id: string }>()
@@ -13,8 +13,8 @@ export function CoursePage() {
   const [result, setResult] = useState<string | null>(null)
   const [loginOpen, setLoginOpen] = useState(false)
 
-  const { data: courses } = useQuery({ queryKey: ['courses'], queryFn: () => apiGet<Course[]>('/courses') })
-  const course = courses?.find((c) => String(c.id) === id)
+  const { data: courses } = useQuery({ queryKey: ['courses'], queryFn: () => apiGet<CoursesResponse>('/courses') })
+  const course = [...(courses?.mine ?? []), ...(courses?.others ?? [])].find((c) => String(c.id) === id)
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['course', id],

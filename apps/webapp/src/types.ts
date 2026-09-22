@@ -8,6 +8,11 @@ export interface Course {
   department: string
 }
 
+export interface CoursesResponse {
+  mine: Course[] | null
+  others: Course[]
+}
+
 export interface Week {
   id: number
   weekNumber: number

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
-const ONBOARDING_KEY = 'onboarding_v2' // новая версия онбординга -- показать всем ещё раз
+const ONBOARDING_KEY = 'onboarding_v3' // новая версия онбординга -- показать всем ещё раз
 
 const SLIDES = [
   {
@@ -15,6 +15,10 @@ const SLIDES = [
   {
     title: 'Ваши курсы — с логином KBTU',
     body: 'Нет вашего курса? Войдите через uninet — появятся все ваши курсы, автопросмотр лекций и новые транскрибы. Бесплатно.',
+  },
+  {
+    title: 'Уведомим про отметку посещения',
+    body: 'После входа бот начнёт следить за wsp.kbtu.kz и пришлёт сообщение, как только откроется отметка посещения.',
   },
 ]
 
