@@ -59,9 +59,9 @@ export function describeApiError(err: unknown): string {
  * (apps/api/auth.py) can HMAC-validate it and auto-create the user -- no
  * separate login step, per docs/spec.md's auth model.
  *
- * `path` is a backend route (e.g. `/courses`, `/me`). `VITE_API_URL` points
- * at the API's origin (VPS nginx in prod, local API container in dev) --
- * webapp is deployed separately on Vercel, so this can't be same-origin.
+ * `path` is a backend route (e.g. `/courses`, `/me`). In prod `VITE_API_URL`
+ * is `/api`: vercel.json proxies it to Railway, because `*.up.railway.app`
+ * DNS (single ns1.railway.app) intermittently fails on clients' resolvers.
  */
 const API_BASE = import.meta.env.VITE_API_URL ?? ''
 
