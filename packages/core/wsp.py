@@ -24,6 +24,8 @@ from packages.core.uninet import InvalidCredentials, UninetUnavailable
 BASE = "https://wsp.kbtu.kz/RegistrationOnline"
 # Заглушка пустой страницы: ru (казахского перевода нет, kk показывает ru) и en.
 NO_DISCIPLINES = {"Нет доступных дисциплин", "No disciplines available"}
+# Заголовок страницы и подписи кнопок — в уведомлении не нужны (там своя кнопка).
+SKIP_TEXTS = {"Отметка посещения", "Attendance mark", "Отметиться"}
 LOGIN_VIEW = "kz.kbtu.officeregistrar.widget.api.LoginView"
 TIMEOUT = 20
 
@@ -41,6 +43,11 @@ def texts(uidl: dict) -> list[str]:
     """Все тексты/подписи компонентов из UIDL-состояния."""
     return [v[k] for v in uidl.get("state", {}).values() for k in ("text", "caption")
             if isinstance(v.get(k), str) and v[k]]
+
+
+def attendance_text(page_texts: list[str]) -> str:
+    """Дисциплины открытой отметки: без заголовка и подписей кнопок, ``<br>`` → перенос."""
+    return "\n\n".join(t.replace("<br>", "\n") for t in page_texts if t not in SKIP_TEXTS)
 
 
 def is_open(page_texts: list[str]) -> bool:

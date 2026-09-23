@@ -30,7 +30,6 @@ MAX_CONCURRENT = 2  # ffmpeg + загрузка в OpenAI; VPS общий
 POLL_INTERVAL_SECONDS = 3
 ATTENDANCE_INTERVAL_SECONDS = 120  # окно отметки на паре короткое
 ATTENDANCE_CONCURRENCY = 5
-WSP_HEADERS = {"Отметка посещения", "Attendance mark"}
 
 
 async def run_transcribe(pool, task) -> None:
@@ -54,10 +53,9 @@ async def check_attendance(pool, bot: Bot, user) -> None:
         return
     is_open = wsp.is_open(page)
     if is_open and not user["wsp_open"]:
-        details = "\n".join(t for t in page if t not in WSP_HEADERS)
         await bot.send_message(
             user["telegram_id"],
-            f"🔔 Открылась отметка посещения на wsp.kbtu.kz\n\n{details}".strip(),
+            f"🔔 Открылась отметка посещения на wsp.kbtu.kz\n\n{wsp.attendance_text(page)}".strip(),
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
                 InlineKeyboardButton(text="Отметиться", url=wsp.BASE)]]),
         )

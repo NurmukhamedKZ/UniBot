@@ -16,6 +16,12 @@ def test_is_open():
     assert wsp.is_open(OPEN)
 
 
+def test_attendance_text():
+    page = ["Отметка посещения", "БД<br>Иванов<br>Л3 (12:00 - 13:00)", "Отметиться",
+            "БД<br>Иванов<br>Л4 (13:00 - 14:00)", "Отметиться"]
+    assert wsp.attendance_text(page) == "БД\nИванов\nЛ3 (12:00 - 13:00)\n\nБД\nИванов\nЛ4 (13:00 - 14:00)"
+
+
 def test_texts_and_login():
     uidl = {"state": {"1": {"text": "Нет доступных дисциплин"}, "2": {"caption": "Отметиться"}, "3": {"width": "1"}}}
     assert wsp.texts(uidl) == ["Нет доступных дисциплин", "Отметиться"]
@@ -48,7 +54,8 @@ async def test_notifies_once_per_opening(pool, make_user, monkeypatch):
         await worker.check_attendance(pool, bot, user)
 
     assert len(bot.sent) == 2  # два открытия, повторное OPEN молчит
-    assert bot.sent[0][0] == 42 and "Математика" in bot.sent[0][1] and "Отметка посещения" not in bot.sent[0][1]
+    assert bot.sent[0][0] == 42 and "Математика" in bot.sent[0][1] and "Отметка посещения" not in bot.sent[0][1] \
+        and "Отметиться" not in bot.sent[0][1]
     assert (await users.with_credentials(pool))[0]["wsp_open"] is True
 
 
