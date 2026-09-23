@@ -17,6 +17,10 @@ Playwright/LLM-тесты) — в legacy/, не собирается и не т�
 - worker же раз в 2 мин логинится в wsp.kbtu.kz/RegistrationOnline (`packages/core/wsp.py`,
   Vaadin UIDL по HTTP, логин = email до @) за каждого юзера с кредами; нет заглушки
   «Нет доступных дисциплин» → бот шлёт уведомление (один раз на открытие, флаг `users.wsp_open`).
+  Под каждой открытой парой — кнопка «✅ Отметиться» (`callback_data = wsp:<Lesson.key>`):
+  по нажатию **бот** логинится на wsp от имени нажавшего и жмёт Vaadin `ButtonServerRpc.click`
+  (`wsp.mark`). Автоматически без нажатия не отмечаем. Пара узнаётся по тексту Label без
+  «Осталось N мин.» — id компонентов между сессиями не стабильны.
   wsp не отдаёт промежуточный сертификат — он лежит в `packages/core/sectigo_dv_r36.pem`.
 - Запуск: docker compose up -d --build. Тесты: pytest tests/ -v (нужен Postgres,
   `TEST_DATABASE_URL`, по умолчанию localhost:5433).
