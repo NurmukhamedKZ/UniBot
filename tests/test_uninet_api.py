@@ -157,3 +157,17 @@ async def test_logged_in_courses_include_others_from_cache(client, pool):
     body = (await client.get("/courses")).json()
     assert [c["id"] for c in body["mine"]] == [55]
     assert [c["id"] for c in body["others"]] == [88]  # чужой курс из кэша, а не только свои
+
+
+async def test_logged_in_opens_others_course_from_cache(client, pool, monkeypatch):
+    await client.put("/me/credentials", json={"email": "s@kbtu.kz", "password": "pw"})
+    await client.get("/courses/55")  # кто-то закэшировал курс 55 с неделями 1, 2
+
+    async def not_enrolled(_id):  # чужой курс/неделя: uninet отвечает 422
+        raise uninet.UninetUnavailable("GET /courses/55 -> HTTP 422")
+
+    monkeypatch.setattr(client.fake, "course", not_enrolled)
+    monkeypatch.setattr(client.fake, "week", not_enrolled)
+    assert [w["id"] for w in (await client.get("/courses/55")).json()["weeks"]] == [1, 2]
+    assert [v["kinescope_id"] for v in (await client.get("/weeks/1")).json()["videos"]] == ["aaaaaaaaaa", "bbbbbbbbbb"]
+    assert (await client.get("/courses/99")).status_code == 502  # в кэше нет — честная ошибка

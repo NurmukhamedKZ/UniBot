@@ -66,5 +66,14 @@ async def with_credentials(pool: asyncpg.Pool) -> list[asyncpg.Record]:
     )
 
 
+async def credentials_by_telegram_id(pool: asyncpg.Pool, telegram_id: int) -> asyncpg.Record | None:
+    """Креды KBTU юзера по Telegram id — бот отмечает на wsp от его имени."""
+    return await pool.fetchrow(
+        "SELECT id, kbtu_email, kbtu_password_enc FROM users "
+        "WHERE telegram_id = $1 AND kbtu_email IS NOT NULL AND kbtu_password_enc IS NOT NULL",
+        telegram_id,
+    )
+
+
 async def set_wsp_open(pool: asyncpg.Pool, user_id, is_open: bool) -> None:
     await pool.execute("UPDATE users SET wsp_open = $2 WHERE id = $1", user_id, is_open)

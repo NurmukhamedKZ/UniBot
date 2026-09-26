@@ -30,7 +30,6 @@ MAX_CONCURRENT = 2  # ffmpeg + загрузка в OpenAI; VPS общий
 POLL_INTERVAL_SECONDS = 3
 ATTENDANCE_INTERVAL_SECONDS = 120  # окно отметки на паре короткое
 ATTENDANCE_CONCURRENCY = 5
-WSP_HEADERS = {"Отметка посещения", "Attendance mark"}
 
 
 async def run_transcribe(pool, task) -> None:
@@ -46,20 +45,27 @@ async def run_transcribe(pool, task) -> None:
         await tasks.finish(pool, task["id"], "failed", error=str(exc)[:500])
 
 
+def attendance_keyboard(page: dict) -> InlineKeyboardMarkup:
+    """По кнопке «Отметиться» на каждую открытую пару (жмёт бот, см. apps/bot) + ссылка на сайт."""
+    rows = [[InlineKeyboardButton(text=f"✅ Отметиться: {lesson.title}", callback_data=wsp.MARK_PREFIX + lesson.key)]
+            for lesson in wsp.lessons(page)]
+    rows.append([InlineKeyboardButton(text="Открыть wsp.kbtu.kz", url=wsp.BASE)])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 async def check_attendance(pool, bot: Bot, user) -> None:
     try:
-        page = await wsp.registration_texts(user["kbtu_email"], decrypt_password(user["kbtu_password_enc"]))
+        page = await wsp.open_page(user["kbtu_email"], decrypt_password(user["kbtu_password_enc"]))
     except (InvalidCredentials, UninetUnavailable) as exc:
         logger.warning("wsp check failed for user %s: %r", user["id"], exc)
         return
-    is_open = wsp.is_open(page)
+    page_texts = wsp.texts(page)
+    is_open = wsp.is_open(page_texts)
     if is_open and not user["wsp_open"]:
-        details = "\n".join(t for t in page if t not in WSP_HEADERS)
         await bot.send_message(
             user["telegram_id"],
-            f"🔔 Открылась отметка посещения на wsp.kbtu.kz\n\n{details}".strip(),
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(text="Отметиться", url=wsp.BASE)]]),
+            f"🔔 Открылась отметка посещения на wsp.kbtu.kz\n\n{wsp.attendance_text(page_texts)}".strip(),
+            reply_markup=attendance_keyboard(page),
         )
         logger.info("attendance open for user %s", user["id"])
     if is_open != user["wsp_open"]:

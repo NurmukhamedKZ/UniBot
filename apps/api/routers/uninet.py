@@ -91,16 +91,23 @@ async def _cache_missing_weeks(pool: asyncpg.Pool, s: uninet.Uninet, weeks: list
                 logging.getLogger(__name__).warning("caching week %s failed", w["id"], exc_info=True)
 
 
+async def _cached_course(pool: asyncpg.Pool, course_id: int, miss: Exception) -> dict:
+    weeks = await catalog.cached_course_weeks(pool, course_id)
+    if weeks is None:
+        raise miss
+    return {"course": {"id": course_id}, "weeks": weeks}
+
+
 @router.get("/courses/{course_id}")
 async def get_course(course_id: int, request: Request, background: BackgroundTasks, user=Depends(current_user)):
     pool = _pool(request)
     if not _has_credentials(user):
-        weeks = await catalog.cached_course_weeks(pool, course_id)
-        if weeks is None:
-            raise NoCredentials()
-        return {"course": {"id": course_id}, "weeks": weeks}
+        return await _cached_course(pool, course_id, NoCredentials())
     s = _session(user)
-    data = await s.course(course_id)
+    try:
+        data = await s.course(course_id)
+    except uninet.UninetUnavailable as exc:  # чужой курс uninet не отдаёт (422) — показываем кэш
+        return await _cached_course(pool, course_id, exc)
     await catalog.cache_course_weeks(pool, course_id, data["weeks"])
     background.add_task(_cache_missing_weeks, pool, s, data["weeks"])
     return {"course": data["course"], "weeks": data["weeks"]}
@@ -109,12 +116,14 @@ async def get_course(course_id: int, request: Request, background: BackgroundTas
 @router.get("/weeks/{week_id}")
 async def get_week(week_id: int, request: Request, user=Depends(current_user)):
     pool = _pool(request)
-    if _has_credentials(user):
+    try:
+        if not _has_credentials(user):
+            raise NoCredentials()
         week, videos = await _cache_week(pool, week_id, await _session(user).week(week_id))
-    else:
+    except (NoCredentials, uninet.UninetUnavailable):  # чужая неделя — из кэша
         cached = await catalog.cached_week(pool, week_id)
         if cached is None:
-            raise NoCredentials()
+            raise
         week, videos = cached
     done = await catalog.transcribed_ids(pool, [v["kinescope_id"] for v in videos])
     return {"week": week, "videos": [{**v, "has_transcript": v["kinescope_id"] in done} for v in videos]}
