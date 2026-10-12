@@ -61,8 +61,8 @@ def test_lesson_key_survives_countdown():
 def test_texts_and_login():
     uidl = {"state": {"1": {"text": "Нет доступных дисциплин"}, "2": {"caption": "Отметиться"}, "3": {"width": "1"}}}
     assert wsp.texts(uidl) == ["Нет доступных дисциплин", "Отметиться"]
-    assert wsp.wsp_login("n_ashekei@kbtu.kz") == "n_ashekei"
-    assert wsp.wsp_login("n_ashekei") == "n_ashekei"
+    assert wsp.wsp_login("a_student@kbtu.kz") == "a_student"
+    assert wsp.wsp_login("a_student") == "a_student"
 
 
 class FakeBot:

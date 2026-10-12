@@ -20,7 +20,7 @@
 - Данные старого бота не мигрируются.
 - Пакеты: S=10/1490₸/250⭐, M=50/2490₸/400⭐, L=100/2990₸/500⭐ (см. `packages/shared/config.py`).
 - Referral-бонус — после первого завершённого автопросмотра приглашённого.
-- Mini App требует HTTPS → домен `api.workkeldi.com` → A-запись на 109.199.125.111.
+- Mini App требует HTTPS → домен `api.workkeldi.com` → A-запись на <IP VPS>.
 - VPS общий с otclick/Langfuse/ClickHouse: свободно ~3 GB RAM → swap 4G обязателен,
   ≤2 параллельных Chromium.
 
@@ -295,7 +295,7 @@ CMD ["uvicorn", "apps.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
 ```nginx
 server {
     listen 80;
-    server_name api.workkeldi.com;       # A-запись → 109.199.125.111
+    server_name api.workkeldi.com;       # A-запись → <IP VPS>
 
     location / {
         proxy_pass         http://127.0.0.1:8001/;
@@ -844,7 +844,7 @@ echo '/swapfile none swap sw 0 0' >> /etc/fstab
 ```
 
   Worker: старт с 2 Playwright-сессий; если swap активно используется — снизить до 1.
-- [ ] Домен: `api.workkeldi.com` → A-запись на 109.199.125.111 (домен свободен,
+- [ ] Домен: `api.workkeldi.com` → A-запись на <IP VPS> (домен свободен,
   проекты не смешиваются с otclick).
 - [ ] Проект в `/home/app/unibot`; `.env` на сервере (пароль postgres не дефолтный!).
 - [ ] `docker compose up -d --build` — постгрес/редис UniBot свои, внутренняя сеть,
