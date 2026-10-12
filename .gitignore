@@ -20,3 +20,7 @@ node_modules/
 .vercel
 .DS_Store
 .playwright-mcp/
+.ruff_cache/
+.pytest_cache/
+.superpowers/
+.claude/settings.local.json

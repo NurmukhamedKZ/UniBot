@@ -35,7 +35,7 @@ Playwright/LLM-тесты) — в legacy/, не собирается и не т�
   `docker compose stop`, не удалён. НЕ запускать бота в двух местах: один токен →
   TelegramConflictError на getUpdates.
 - webapp → **Vercel**, проект `unibot-webapp`, root dir `apps/webapp`, **автодеплой из
-  push в main**. `VITE_API_URL` (production env на Vercel) = домен api на Railway;
+  push в main**. `VITE_API_URL` (production env на Vercel) = `/api`, `vercel.json` проксирует его на Railway;
   `WEBAPP_URL` в переменных Railway = `https://unibot-webapp.vercel.app` (CORS + кнопка бота).
 - Vercel CLI — только из **корня репо** (`.vercel/project.json` → `unibot-webapp`),
   иначе создастся левый проект.
@@ -60,5 +60,3 @@ Playwright/LLM-тесты) — в legacy/, не собирается и не т�
 - Локально Mini App проверяется подставным `#tgWebAppData=...`: bridge требует
   в initData `signature` и `user.first_name`, и нужна полная загрузка страницы
   (смена только хэша не пересоздаёт performance entry).
-
-**SSH (старый VPS):** `ssh -i ~/.ssh/id_ed25519_hermes root@109.199.125.111`

@@ -16,7 +16,7 @@ services:
     build: { context: ., dockerfile: Dockerfile.api }
     restart: on-failure
     env_file: .env
-    ports: ["127.0.0.1:8001:8000"]   # 8000 на хосте занят otclick; наружу идём через хостовый nginx
+    ports: ["127.0.0.1:8001:8000"]
     depends_on: { postgres: { condition: service_healthy } }
 
   bot:
@@ -32,5 +32,3 @@ services:
     depends_on: { postgres: { condition: service_healthy } }
 
 volumes: { pgdata: {} }
-# nginx-контейнера НЕТ: на VPS уже работает хостовый nginx (80/443, проксирует
-# api.otclick.org → 127.0.0.1:8000). UniBot подключается server-блоком к нему.
