@@ -8,6 +8,9 @@
   authorization code + PKCE (S256). Password grant на клиенте выключен (`unauthorized_client`).
 - Форма: `form#kc-form-login` (action с session_code), поля `#username`, `#password`, кнопка `#kc-login`.
   Успех → 302 на callback с `code=`; неверный пароль → 200 с той же формой.
+- Перед `key.kbtu.kz` стоит WAF (openresty, с ~2026-11-02): POST формы без браузерного
+  `User-Agent` → `403 Forbidden` от nginx, до Keycloak не доходит (Origin/Referer не помогают).
+  Поэтому все httpx-клиенты в `uninet.py` шлют `UA`.
 - Токены: access 300 с, refresh 1800 с. API: `Authorization: Bearer <access>`.
 
 ## API (`https://uninet.kbtu.kz/api`)

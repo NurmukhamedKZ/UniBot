@@ -31,12 +31,15 @@ Playwright/LLM-тесты) — в legacy/, не собирается и не т�
   регионы ограничены политикой подписки). Хост `unibot-kbtu.austriaeast.cloudapp.azure.com`.
   Стек в `~/unibot` = клон репо + неотслеживаемые `.env`, `Caddyfile`, `compose.prod.yml`
   (Caddy, HTTPS → api:8000); `.env` содержит `COMPOSE_FILE=docker-compose.yml:compose.prod.yml`.
-  Деплой: `git pull && sudo docker compose up -d --build` на VM (автодеплоя нет).
+  Деплой (после мержа в main): `ssh` на VM → `cd unibot && git pull && sudo docker compose up -d --build`
+  (автодеплоя нет; для одного сервиса — `... --build api worker`).
   Миграции гоняет api на старте. SSH-доступ — в памяти агента, не в репо.
 - Railway (2026-09-16 … 2026-11) — подписка кончилась, не используется. Старый стек на Contabo
   остановлен. НЕ запускать бота в двух местах: один токен → TelegramConflictError на getUpdates.
 - webapp → **Vercel**, проект `unibot-webapp`, root dir `apps/webapp`, **автодеплой из
-  push в main**. `VITE_API_URL` (production env на Vercel) = `/api`, `vercel.json` проксирует его на VM;
+  push в main**. `VITE_API_URL` (production и preview env на Vercel) = `/api`, `vercel.json` проксирует его на VM.
+  Vite вшивает его в бандл при сборке: после смены переменной нужен редеплой, проверка —
+  grep собранного `/assets/index-*.js`;
   `WEBAPP_URL` в `.env` на VM = `https://unibot-webapp.vercel.app` (CORS + кнопка бота).
 - Vercel CLI — только из **корня репо** (`.vercel/project.json` → `unibot-webapp`),
   иначе создастся левый проект.
