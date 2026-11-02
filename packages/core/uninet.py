@@ -24,6 +24,9 @@ API = "https://uninet.kbtu.kz/api"
 CLIENT_ID = "uninet-frontend"
 REDIRECT_URI = "https://uninet.kbtu.kz/callback"
 TIMEOUT = 20
+# WAF перед key.kbtu.kz (openresty) с ноября 2026 отдаёт 403 на POST логина без браузерного UA.
+UA = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+                    "(KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36"}
 
 
 class InvalidCredentials(Exception):
@@ -49,7 +52,7 @@ class Uninet:
         verifier = secrets.token_urlsafe(48)
         challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
         try:
-            async with httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=True) as c:
+            async with httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=True, headers=UA) as c:
                 r = await c.get(f"{KEYCLOAK}/auth", params={
                     "client_id": CLIENT_ID, "redirect_uri": REDIRECT_URI, "response_type": "code",
                     "scope": "openid profile", "state": secrets.token_hex(8),
@@ -90,7 +93,7 @@ class Uninet:
             return self._access
         if self._refresh and now < self._refresh_exp:
             try:
-                async with httpx.AsyncClient(timeout=TIMEOUT) as c:
+                async with httpx.AsyncClient(timeout=TIMEOUT, headers=UA) as c:
                     r = await c.post(f"{KEYCLOAK}/token", data={
                         "grant_type": "refresh_token", "client_id": CLIENT_ID, "refresh_token": self._refresh,
                     })
@@ -105,7 +108,7 @@ class Uninet:
     async def _request(self, method: str, path: str, **kw):
         for attempt in range(2):
             try:
-                async with httpx.AsyncClient(timeout=TIMEOUT) as c:
+                async with httpx.AsyncClient(timeout=TIMEOUT, headers=UA) as c:
                     r = await c.request(method, API + path, headers={
                         "Authorization": f"Bearer {await self._token()}", "Accept": "application/json",
                     }, **kw)
