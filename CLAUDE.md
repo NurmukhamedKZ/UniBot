@@ -10,10 +10,12 @@ Playwright/LLM-тесты) — в legacy/, не собирается и не т�
   недели, progress) + аудио из Kinescope. `packages/core/transcribe.py` — ffmpeg → OpenAI.
 - api: с кредами каталог читается вживую из uninet (у каждого свои курсы) и кэшируется
   в `uninet_courses`/`uninet_weeks`; без кредов отдаётся этот кэш (готовые транскрибы),
-  новые транскрибы и автопросмотр (синхронный POST progress) — только с кредами
-  (409 no_credentials). Креды — Fernet в `users.kbtu_*`.
-- worker: очередь `watch_tasks type='transcribe'`, `lesson_id` = id видео Kinescope.
-  Транскрибы кэшируются в `transcripts` и общие для всех.
+  новые транскрибы и автопросмотр — только с кредами (409 no_credentials).
+  Креды — Fernet в `users.kbtu_*`.
+- worker: очередь `watch_tasks`. `type='transcribe'`, `lesson_id` = id видео Kinescope;
+  транскрибы кэшируются в `transcripts` и общие для всех. `type='watch'`, `lesson_id` = id
+  недели: uninet засчитывает только реальное время просмотра (бюджет на юзера, docs/uninet.md),
+  поэтому воркер шлёт тики progress в реальном времени, по одной неделе юзера за раз.
 - worker же раз в 2 мин логинится в wsp.kbtu.kz/RegistrationOnline (`packages/core/wsp.py`,
   Vaadin UIDL по HTTP, логин = email до @) за каждого юзера с кредами; нет заглушки
   «Нет доступных дисциплин» → бот шлёт уведомление (один раз на открытие, флаг `users.wsp_open`).

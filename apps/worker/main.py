@@ -1,7 +1,11 @@
-"""Worker: очередь ``watch_tasks`` с ``type='transcribe'`` + слежка за wsp.kbtu.kz.
+"""Worker: очередь ``watch_tasks`` + слежка за wsp.kbtu.kz.
 
-``lesson_id`` задачи — id видео Kinescope. Кредов студента не нужно: аудио
-берётся с Kinescope напрямую (см. packages/core/uninet.py).
+``transcribe``: ``lesson_id`` — id видео Kinescope. Кредов студента не нужно:
+аудио берётся с Kinescope напрямую (см. packages/core/uninet.py).
+
+``watch``: ``lesson_id`` — id недели uninet; воркер «смотрит» её видео тиками
+прогресса в реальном времени от имени юзера (uninet засчитывает только реальное
+время, docs/uninet.md). Недели одного юзера — по очереди, разных — параллельно.
 
 Слежка: раз в ``ATTENDANCE_INTERVAL_SECONDS`` у каждого юзера с кредами
 проверяется «Отметка посещения» на wsp; при переходе закрыто -> открыто бот
@@ -16,7 +20,7 @@ import logging
 from aiogram import Bot
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from packages.core import wsp
+from packages.core import uninet, wsp
 from packages.core.transcribe import transcribe
 from packages.core.uninet import InvalidCredentials, UninetUnavailable
 from packages.db import catalog, tasks, users
@@ -27,6 +31,7 @@ from packages.shared.crypto import decrypt_password
 logger = logging.getLogger(__name__)
 
 MAX_CONCURRENT = 2  # ffmpeg + загрузка в OpenAI; на VM 1 GB RAM
+WATCH_CONCURRENCY = 50  # просмотр — это POST раз в 30 с, держать можно много
 POLL_INTERVAL_SECONDS = 3
 ATTENDANCE_INTERVAL_SECONDS = 120  # окно отметки на паре короткое
 ATTENDANCE_CONCURRENCY = 5
@@ -43,6 +48,48 @@ async def run_transcribe(pool, task) -> None:
     except Exception as exc:
         logger.exception("transcribe failed for %s", kid)
         await tasks.finish(pool, task["id"], "failed", error=str(exc)[:500])
+
+
+async def run_watch(pool, task) -> None:
+    user = await users.credentials_by_id(pool, task["user_id"])
+    try:
+        if user is None:
+            raise InvalidCredentials()
+        s = uninet.session(user["kbtu_email"], decrypt_password(user["kbtu_password_enc"]))
+        await s.watch_week(int(task["lesson_id"]))
+        await tasks.finish(pool, task["id"], "done")
+        logger.info("watched week %s for user %s", task["lesson_id"], task["user_id"])
+    except Exception as exc:
+        logger.exception("watch failed for week %s", task["lesson_id"])
+        await tasks.finish(pool, task["id"], "failed", error=repr(exc)[:500])
+
+
+async def consume(pool, type: str, run, concurrency: int) -> None:
+    """Забирать задачи ``type`` из очереди, держа не больше ``concurrency`` одновременно."""
+    semaphore = asyncio.Semaphore(concurrency)
+    running: set[asyncio.Task] = set()
+
+    async def guarded(task):
+        try:
+            await run(pool, task)
+        finally:
+            semaphore.release()
+
+    try:
+        while True:
+            await semaphore.acquire()
+            task = await tasks.claim_next(pool, type)
+            if task is None:
+                semaphore.release()
+                await asyncio.sleep(POLL_INTERVAL_SECONDS)
+                continue
+            job = asyncio.create_task(guarded(task))
+            running.add(job)
+            job.add_done_callback(running.discard)
+    finally:
+        for job in running:
+            job.cancel()
+        await asyncio.gather(*running, return_exceptions=True)
 
 
 def attendance_keyboard(page: dict) -> InlineKeyboardMarkup:
@@ -96,34 +143,13 @@ async def main() -> None:
     logger.info("requeued %d stale running task(s)", await tasks.requeue_stale_running(pool))
 
     bot = Bot(TELEGRAM_TOKEN)
-    attendance = asyncio.create_task(watch_attendance(pool, bot))
-
-    semaphore = asyncio.Semaphore(MAX_CONCURRENT)
-    running: set[asyncio.Task] = set()
-
-    async def guarded(task):
-        async with semaphore:
-            await run_transcribe(pool, task)
-
     try:
-        while True:
-            if semaphore.locked():
-                await asyncio.sleep(POLL_INTERVAL_SECONDS)
-                continue
-            task = await tasks.claim_next(pool)
-            if task is None:
-                await asyncio.sleep(POLL_INTERVAL_SECONDS)
-                continue
-            if task["type"] != "transcribe":
-                # lesson/course — задачи старого автопросмотра UniX (legacy/), больше не исполняются.
-                await tasks.finish(pool, task["id"], "cancelled", error="legacy task type")
-                continue
-            job = asyncio.create_task(guarded(task))
-            running.add(job)
-            job.add_done_callback(running.discard)
+        await asyncio.gather(
+            watch_attendance(pool, bot),
+            consume(pool, "transcribe", run_transcribe, MAX_CONCURRENT),
+            consume(pool, "watch", run_watch, WATCH_CONCURRENCY),
+        )
     finally:
-        attendance.cancel()
-        await asyncio.gather(attendance, *running, return_exceptions=True)
         await bot.session.close()
         await pool.close()
 

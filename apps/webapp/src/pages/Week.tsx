@@ -56,7 +56,6 @@ const transcriptKey = (kid: string) => ['transcript', kid]
 export function WeekPage() {
   const { weekId } = useParams<{ weekId: string }>()
   const qc = useQueryClient()
-  const [watching, setWatching] = useState(false)
   const [requested, setRequested] = useState<Set<string>>(new Set())
   const [copiedAll, copyAll] = useCopied()
   const [loginOpen, setLoginOpen] = useState(false)
@@ -70,6 +69,9 @@ export function WeekPage() {
     queryKey: ['week', weekId],
     queryFn: () => apiGet<WeekDetail>(`/weeks/${weekId}`),
     enabled: !!weekId,
+    // воркер смотрит в реальном времени — обновляем прогресс, пока задача в очереди
+    refetchInterval: (q: { state: { data?: WeekDetail } }) =>
+      PENDING.includes(q.state.data?.watch_status ?? '') ? 15000 : false,
   })
   const videos = data?.videos ?? []
 
@@ -83,14 +85,11 @@ export function WeekPage() {
   })
 
   async function watchWeek() {
-    setWatching(true)
     try {
       await apiPost(`/weeks/${weekId}/watch`)
       await qc.invalidateQueries({ queryKey: ['week', weekId] })
     } catch (err) {
       loginOnCredentialsError(err)
-    } finally {
-      setWatching(false)
     }
   }
 
@@ -109,6 +108,11 @@ export function WeekPage() {
   const anyPending = transcripts.some((t) => isPending(t.data))
   const allReady = videos.length > 0 && texts.every(Boolean)
   const allWatched = videos.every((v) => v.completed)
+  const watching = PENDING.includes(data?.watch_status ?? '')
+  const watchLeft = videos.reduce(
+    (sum, v) => sum + (v.completed ? 0 : Math.max((v.required_sec ?? v.duration_sec) - (v.watched_sec ?? 0), 0)),
+    0,
+  )
 
   function copyAllTranscripts() {
     copyAll(
@@ -131,8 +135,23 @@ export function WeekPage() {
         <>
           <div className="mb-5 flex flex-col gap-2">
             <button onClick={watchWeek} disabled={watching || allWatched} className="btn-primary w-full">
-              {allWatched ? 'Все видео просмотрены' : watching ? 'Отмечаем…' : 'Просмотреть все видео недели'}
+              {allWatched
+                ? 'Все видео просмотрены'
+                : watching
+                  ? `Смотрим… осталось ~${Math.ceil(watchLeft / 60)} мин`
+                  : 'Просмотреть все видео недели'}
             </button>
+            {watching && !allWatched && (
+              <p className="text-xs" style={{ color: 'var(--muted)' }}>
+                uninet засчитывает только реальное время просмотра, поэтому смотрим по одному видео в реальном
+                времени. Приложение можно закрыть.
+              </p>
+            )}
+            {data.watch_status === 'failed' && !allWatched && (
+              <p className="text-xs" style={{ color: 'var(--muted)' }}>
+                Просмотр прервался — нажмите ещё раз, продолжим с того же места.
+              </p>
+            )}
             {videos.length > 0 &&
               (allReady ? (
                 <button onClick={copyAllTranscripts} className="btn-secondary w-full">
@@ -161,7 +180,7 @@ export function WeekPage() {
                     className="num shrink-0 text-xs"
                     style={{ color: video.completed ? 'var(--success)' : 'var(--muted)' }}
                   >
-                    {video.completed ? '✓ ' : ''}
+                    {video.completed ? '✓ ' : video.watched_sec ? `${formatDuration(video.watched_sec)} / ` : ''}
                     {formatDuration(video.duration_sec)}
                   </span>
                 </div>

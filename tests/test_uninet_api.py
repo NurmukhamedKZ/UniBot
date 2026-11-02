@@ -31,7 +31,6 @@ def _init_data() -> str:
 
 class FakeUninet:
     def __init__(self):
-        self.marked: list[int] = []
         self.weeks = {
             1: {"week": {"id": 1}, "content": [{"videos": [
                 {"id": 10, "title": "A", "url": "https://kinescope.io/aaaaaaaaaa", "durationSec": 60, "completed": True},
@@ -56,8 +55,6 @@ class FakeUninet:
     async def week(self, week_id):
         return self.weeks[week_id]
 
-    async def mark_watched(self, video):
-        self.marked.append(video["id"])
 
 
 @pytest.fixture
@@ -98,12 +95,13 @@ async def test_week_and_watch(client, pool):
         ("aaaaaaaaaa", True, True), ("bbbbbbbbbb", False, False),
     ]
 
-    assert (await client.post("/weeks/1/watch")).json() == {"marked": 1}
-    assert client.fake.marked == [11]  # уже просмотренное не трогаем
+    assert (await client.post("/weeks/1/watch")).status_code == 202
+    assert (await client.post("/weeks/1/watch")).status_code == 202  # повтор не дублирует задачу
+    assert (await client.get("/weeks/1")).json()["watch_status"] == "queued"
 
-    client.fake.marked.clear()
-    assert (await client.post("/courses/55/watch")).json() == {"marked": 2}
-    assert client.fake.marked == [11, 20]  # закрытая неделя 3 пропущена
+    assert (await client.post("/courses/55/watch")).json() == {"queued": 2}  # закрытая неделя 3 пропущена
+    rows = await pool.fetch("SELECT lesson_id FROM watch_tasks WHERE type = 'watch' ORDER BY lesson_id")
+    assert [r["lesson_id"] for r in rows] == ["1", "2"]
 
 
 async def test_transcribe_cached_enqueue_and_dedup(client, pool):

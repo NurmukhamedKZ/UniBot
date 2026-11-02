@@ -1,5 +1,8 @@
 """Курсы/недели/видео uninet от имени юзера + автопросмотр + транскрибы.
 
+Автопросмотр — очередь ``watch_tasks type='watch'`` (одна задача на неделю):
+uninet засчитывает только реальное время, воркер смотрит видео десятки минут.
+
 Каталог личный: с кредами всё читается вживую из uninet (у каждого студента
 свои курсы) и попутно кэшируется в БД. Без кредов отдаём кэш — все курсы,
 которые кто-то уже открывал, — чтобы копировать готовые транскрибы; то, чего
@@ -9,7 +12,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import re
 
@@ -73,10 +75,13 @@ async def _cache_week(pool: asyncpg.Pool, week_id: int, data: dict) -> tuple[dic
             "duration_sec": v["durationSec"],
             "completed": v["completed"],
             "kinescope_id": uninet.kinescope_id(v["url"]),
+            "watched_sec": v.get("cumulativeWatchSec"),
+            "required_sec": v.get("requiredSec"),
         }
         for v in uninet.week_videos(data)
     ]
-    await catalog.cache_week(pool, week_id, data["week"], [{**v, "completed": False} for v in videos])
+    await catalog.cache_week(pool, week_id, data["week"],
+                             [{**v, "completed": False, "watched_sec": None} for v in videos])
     return data["week"], videos
 
 
@@ -126,28 +131,29 @@ async def get_week(week_id: int, request: Request, user=Depends(current_user)):
             raise
         week, videos = cached
     done = await catalog.transcribed_ids(pool, [v["kinescope_id"] for v in videos])
-    return {"week": week, "videos": [{**v, "has_transcript": v["kinescope_id"] in done} for v in videos]}
+    watch = await tasks.latest_watch_task(pool, user["id"], week_id)
+    return {
+        "week": week,
+        "videos": [{**v, "has_transcript": v["kinescope_id"] in done} for v in videos],
+        "watch_status": watch["status"] if watch else None,
+    }
 
 
-async def _watch_week(s: uninet.Uninet, week_id: int) -> int:
-    pending = [v for v in uninet.week_videos(await s.week(week_id)) if not v["completed"]]
-    await asyncio.gather(*(s.mark_watched(v) for v in pending))
-    return len(pending)
+@router.post("/weeks/{week_id}/watch", status_code=202)
+async def watch_week(week_id: int, request: Request, user=Depends(current_user)):
+    _session(user)  # 409 без кредов
+    await tasks.enqueue(_pool(request), user["id"], "watch", lesson_id=str(week_id))
+    return {"status": "queued"}
 
 
-@router.post("/weeks/{week_id}/watch")
-async def watch_week(week_id: int, user=Depends(current_user)):
-    return {"marked": await _watch_week(_session(user), week_id)}
-
-
-@router.post("/courses/{course_id}/watch")
-async def watch_course(course_id: int, user=Depends(current_user)):
-    s = _session(user)
-    weeks = [w["id"] for w in (await s.course(course_id))["weeks"] if w["unlocked"]]
-    marked = 0
-    for week_id in weeks:  # по неделе за раз, чтобы не долбить uninet десятками параллельных POST
-        marked += await _watch_week(s, week_id)
-    return {"marked": marked}
+@router.post("/courses/{course_id}/watch", status_code=202)
+async def watch_course(course_id: int, request: Request, user=Depends(current_user)):
+    """Все открытые недели — в очередь; досмотренные воркер пропустит сам."""
+    pool = _pool(request)
+    weeks = [w["id"] for w in (await _session(user).course(course_id))["weeks"] if w["unlocked"]]
+    for week_id in weeks:
+        await tasks.enqueue(pool, user["id"], "watch", lesson_id=str(week_id))
+    return {"queued": len(weeks)}
 
 
 async def _transcript_state(pool: asyncpg.Pool, kid: str) -> dict:

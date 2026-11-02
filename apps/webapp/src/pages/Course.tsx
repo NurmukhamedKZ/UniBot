@@ -26,8 +26,11 @@ export function CoursePage() {
     setWatching(true)
     setResult(null)
     try {
-      const res = await apiPost<{ marked: number }>(`/courses/${id}/watch`)
-      setResult(res.marked ? `Готово: отмечено ${res.marked} видео.` : 'Все открытые видео уже просмотрены.')
+      const res = await apiPost<{ queued: number }>(`/courses/${id}/watch`)
+      setResult(
+        `Поставили в очередь недель: ${res.queued}. uninet засчитывает только реальное время, поэтому смотрим ` +
+          'по одному видео — это займёт примерно столько же, сколько длятся лекции. Прогресс виден на странице недели.',
+      )
       qc.invalidateQueries({ queryKey: ['week'] })
     } catch (err) {
       setResult(null)
@@ -55,7 +58,7 @@ export function CoursePage() {
         <>
           <div className="mb-5 flex flex-col gap-2">
             <button onClick={watchCourse} disabled={watching} className="btn-primary w-full">
-              {watching ? 'Отмечаем…' : 'Просмотреть все открытые недели'}
+              {watching ? 'Ставим в очередь…' : 'Просмотреть все открытые недели'}
             </button>
             {result && (
               <p className="text-sm" style={{ color: 'var(--success)' }}>

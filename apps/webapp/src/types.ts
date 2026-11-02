@@ -35,11 +35,14 @@ export interface Video {
   completed: boolean
   kinescope_id: string
   has_transcript: boolean
+  watched_sec: number | null
+  required_sec: number | null
 }
 
 export interface WeekDetail {
   week: Week
   videos: Video[]
+  watch_status: TranscriptState['status']
 }
 
 export interface TranscriptState {

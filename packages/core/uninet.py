@@ -9,6 +9,7 @@ API: ``https://uninet.kbtu.kz/api``, ``Authorization: Bearer <access_token>``
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import html
@@ -24,6 +25,8 @@ API = "https://uninet.kbtu.kz/api"
 CLIENT_ID = "uninet-frontend"
 REDIRECT_URI = "https://uninet.kbtu.kz/callback"
 TIMEOUT = 20
+BEAT_SEC = 30  # тик прогресса; проверено: тик через 40 с засчитывается целиком
+WATCH_ROUNDS = 3  # перечитать неделю и досмотреть то, что сервер не засчитал
 # WAF перед key.kbtu.kz (openresty) с ноября 2026 отдаёт 403 на POST логина без браузерного UA.
 UA = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
                     "(KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36"}
@@ -133,16 +136,43 @@ class Uninet:
         """{week: {...}, content: [{contentType, videos: [{id, title, url, durationSec, completed, ...}]}]}"""
         return await self._request("GET", f"/courses/week/{week_id}")
 
-    async def mark_watched(self, video: dict) -> None:
-        """Засчитать видео просмотренным: как будто юзер перемотал плеер в конец.
+    async def progress(self, video_id: int, position_sec: int, delta_sec: int) -> None:
+        await self._request("POST", f"/courses/video/{video_id}/progress",
+                            json={"positionSec": position_sec, "deltaSec": delta_sec})
 
-        Плеер uninet шлёт ``{positionSec, deltaSec}`` каждые 5 с; сервер ставит
-        ``completed`` по позиции, дошедшей до конца (у реально перемотанных
-        видео cumulativeWatchSec = 2–12 с, а completed = true). deltaSec = 5 —
-        один обычный тик плеера, без выдуманного «просмотрено целиком».
+    async def watch_video(self, video: dict) -> None:
+        """Смотреть видео в реальном времени, пока не наберётся ``requiredSec``.
+
+        uninet засчитывает ``deltaSec`` не больше реального времени с прошлого
+        тика этого юзера (по любому видео) — ускорить и смотреть параллельно
+        нельзя, позиция не важна. Редкие тики засчитываются целиком, поэтому
+        шлём раз в ``BEAT_SEC``. Подробности — docs/uninet.md.
         """
-        await self._request("POST", f"/courses/video/{video['id']}/progress",
-                            json={"positionSec": video["durationSec"], "deltaSec": 5})
+        duration = video["durationSec"]
+        left = (video.get("requiredSec") or duration) - video["cumulativeWatchSec"]
+        pos = video["watchProgressSec"]
+        await self.progress(video["id"], pos, 0)  # точка отсчёта для сервера
+        last = time.monotonic()
+        while left > 0:
+            await asyncio.sleep(min(BEAT_SEC, left + 1))
+            delta = int(time.monotonic() - last)
+            last += delta  # дробный остаток уходит в следующий тик
+            pos = min(pos + delta, duration)
+            try:
+                await self.progress(video["id"], pos, delta)
+            except UninetUnavailable:  # недосчитанное доберёт следующий круг watch_week
+                continue
+            left -= delta
+
+    async def watch_week(self, week_id: int) -> None:
+        """Досмотреть все незасчитанные видео недели, по одному (параллельно сервер не считает)."""
+        for _ in range(WATCH_ROUNDS):
+            pending = [v for v in week_videos(await self.week(week_id)) if not v["completed"]]
+            if not pending:
+                return
+            for v in pending:
+                await self.watch_video(v)
+        raise UninetUnavailable(f"week {week_id}: videos still not completed after {WATCH_ROUNDS} rounds")
 
 
 def week_videos(week: dict) -> list[dict]:
