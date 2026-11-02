@@ -74,8 +74,33 @@ python -m pytest tests/ -v   # TEST_DATABASE_URL, по умолчанию postgr
 
 ## Деплой
 
-Сейчас: api/bot/worker + Postgres на Railway, webapp на Vercel. Для своего
-инстанса поменяйте адрес api в `apps/webapp/vercel.json` (rewrite `/api/*`).
+Сейчас api/bot/worker + Postgres крутятся через `docker compose` на одной VM
+(Azure, 1 GB RAM + 2 GB swap хватает), перед api стоит Caddy с автоматическим HTTPS.
+webapp на Vercel, он проксирует `/api/*` на VM.
+
+Свой инстанс на любой Linux-VM с Docker и доменом (открыты порты 80/443):
+
+```bash
+git clone https://github.com/NurmukhamedKZ/UniBot.git unibot && cd unibot
+cp .env.example .env   # заполнить; WEBAPP_URL = адрес webapp на Vercel
+echo "COMPOSE_FILE=docker-compose.yml:compose.prod.yml" >> .env
+printf '%s {\n\treverse_proxy api:8000\n}\n' api.example.com > Caddyfile
+cat > compose.prod.yml <<'EOF'
+services:
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    volumes: ["./Caddyfile:/etc/caddy/Caddyfile:ro", "caddy_data:/data"]
+    depends_on: [api]
+volumes: { caddy_data: {} }
+EOF
+docker compose up -d --build   # миграции применяет api на старте
+```
+
+Обновление: `git pull && docker compose up -d --build`. Затем поменяйте адрес api
+в `apps/webapp/vercel.json` (rewrite `/api/*`) и задеплойте webapp на Vercel.
+Не запускайте бота с одним токеном в двух местах — получите `TelegramConflictError`.
 
 ## Лицензия
 
