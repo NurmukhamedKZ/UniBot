@@ -77,3 +77,12 @@ async def credentials_by_telegram_id(pool: asyncpg.Pool, telegram_id: int) -> as
 
 async def set_wsp_open(pool: asyncpg.Pool, user_id, is_open: bool) -> None:
     await pool.execute("UPDATE users SET wsp_open = $2 WHERE id = $1", user_id, is_open)
+
+
+async def credentials_by_id(pool: asyncpg.Pool, user_id) -> asyncpg.Record | None:
+    """Креды KBTU юзера — worker смотрит лекции от его имени."""
+    return await pool.fetchrow(
+        "SELECT kbtu_email, kbtu_password_enc FROM users "
+        "WHERE id = $1 AND kbtu_email IS NOT NULL AND kbtu_password_enc IS NOT NULL",
+        user_id,
+    )

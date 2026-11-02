@@ -68,3 +68,21 @@ async def test_latest_transcribe_task(pool, make_user):
     await tasks.enqueue(pool, user_id, "transcribe", lesson_id="kid2")
 
     assert (await tasks.latest_transcribe_task(pool, "kid1"))["id"] == newer
+
+
+async def test_watch_dedup_and_one_running_per_user(pool, make_user):
+    user1 = await make_user()
+    user2 = await make_user()
+    w1 = await tasks.enqueue(pool, user1, "watch", lesson_id="1")
+    assert await tasks.enqueue(pool, user1, "watch", lesson_id="1") is None  # уже в очереди
+    w2 = await tasks.enqueue(pool, user1, "watch", lesson_id="2")
+    w3 = await tasks.enqueue(pool, user2, "watch", lesson_id="1")
+    await tasks.enqueue(pool, user1, "transcribe", lesson_id="kid")
+
+    assert (await tasks.claim_next(pool, "watch"))["id"] == w1
+    assert (await tasks.claim_next(pool, "watch"))["id"] == w3  # неделя 2 юзера 1 ждёт неделю 1
+    assert await tasks.claim_next(pool, "watch") is None
+
+    await tasks.finish(pool, w1, "done")
+    assert (await tasks.claim_next(pool, "watch"))["id"] == w2
+    assert (await tasks.latest_watch_task(pool, user1, 1))["status"] == "done"

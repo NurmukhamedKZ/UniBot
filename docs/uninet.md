@@ -18,16 +18,29 @@
 |---|---|
 | `GET /courses/student` | `{courses: [{id, code, name, teacher, department}]}` — только курсы этого студента |
 | `GET /courses/{id}` | `{course, weeks: [{id, weekNumber, theme, unlocked, unlockDate, dueDate, current}], currentWeek}` |
-| `GET /courses/week/{weekId}` | `{week, content: [{contentType: VIDEO_LECTURE, videos: [{id, title, url, durationSec, watchProgressSec, cumulativeWatchSec, completed}], tests, files}]}` |
+| `GET /courses/week/{weekId}` | `{week, content: [{contentType: VIDEO_LECTURE, videos: [{id, title, url, durationSec, requiredSec, watchProgressSec, cumulativeWatchSec, completed}], tests, files}]}` |
 | `POST /courses/video/{videoId}/progress` | body `{positionSec, deltaSec}`, ответ 200 без тела |
 
 UI-путь недели: `/student/course-materials/{courseId}/{weekNumber}`. Язык названий — по `Accept-Language`.
 
-## Просмотр
-Плеер шлёт progress каждые 5 с (`deltaSec` — сколько секунд реально проиграно с прошлого тика).
-`completed` ставится, когда позиция дошла до конца: у перемотанных в конец видео `cumulativeWatchSec` 2–12 с,
-а `completed = true`. UniBot шлёт один тик `{positionSec: durationSec, deltaSec: 5}`.
-Тестов у видео нет (поле `tests` бывает у контента, но в видеолекциях пустое).
+## Просмотр (разведка 2026-11-03, новый WSP-фронт `/student/`)
+С ~ноября 2026 засчитывается только реально «просмотренное» время; перемотка в конец
+больше не работает («Перемотанное не засчитывается»).
+- `completed` ставит сервер на тике, после которого `cumulativeWatchSec >= requiredSec`;
+  `requiredSec` = 90% `durationSec`.
+- Плеер шлёт `{positionSec, deltaSec}` раз в 5 с; `deltaSec` — проигранные секунды, перемотка
+  (шаг > `min(скорость, 2) + 1` с за секунду) не считается, на скрытой вкладке плеер на паузе.
+  Скорость в плеере открывается только после `completed`.
+- Сервер засчитывает `deltaSec` не больше реального времени с прошлого тика **этого юзера**
+  (+~2 с допуска), бюджет общий на все видео. Проверено: delta 60 сразу после тика → 0;
+  20 через 10 с → 12; 40 через 40 с → 40; два видео одновременно → одно получает всё,
+  второе 0. Позиция не проверяется (тик с позицией назад засчитан).
+- UniBot: воркер «смотрит» неделю в реальном времени — по одному видео, тик раз в 30 с
+  с `deltaSec` = прошедшему времени (`Uninet.watch_week`). Неделя занимает ~90% суммарной длины видео.
+- Внутри видео бывают квизы (`tests[].videoId` + `timestampSec`) — плеер встаёт на паузу,
+  их можно пропустить; на засчитывание видео не влияют.
+- Отдельно есть poll-api `/respondent/videos/{id}/progress/` (`delta_sec` ≤ 600) — это
+  вступительные тесты, к лекциям не относится.
 
 ## Видео (Kinescope)
 - `url` видео — `https://kinescope.io/<id>`.
