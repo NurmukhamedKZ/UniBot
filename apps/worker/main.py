@@ -26,7 +26,7 @@ from packages.shared.crypto import decrypt_password
 
 logger = logging.getLogger(__name__)
 
-MAX_CONCURRENT = 2  # ffmpeg + загрузка в OpenAI; VPS общий
+MAX_CONCURRENT = 2  # ffmpeg + загрузка в OpenAI; на VM 1 GB RAM
 POLL_INTERVAL_SECONDS = 3
 ATTENDANCE_INTERVAL_SECONDS = 120  # окно отметки на паре короткое
 ATTENDANCE_CONCURRENCY = 5
