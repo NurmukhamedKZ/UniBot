@@ -60,8 +60,8 @@ export function describeApiError(err: unknown): string {
  * separate login step, per docs/spec.md's auth model.
  *
  * `path` is a backend route (e.g. `/courses`, `/me`). In prod `VITE_API_URL`
- * is `/api`: vercel.json proxies it to Railway, because `*.up.railway.app`
- * DNS (single ns1.railway.app) intermittently fails on clients' resolvers.
+ * is `/api`: vercel.json proxies it to the backend VM (same-origin, no CORS,
+ * and the backend host can change without rebuilding the webapp).
  */
 const API_BASE = import.meta.env.VITE_API_URL ?? ''
 

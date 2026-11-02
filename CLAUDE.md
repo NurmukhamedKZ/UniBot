@@ -26,17 +26,18 @@ Playwright/LLM-тесты) — в legacy/, не собирается и не т�
   `TEST_DATABASE_URL`, по умолчанию localhost:5433).
 
 ## Деплой
-- **Railway** (с 2026-09-16), проект `UniBot`: сервисы `api`, `bot`, `worker` (Dockerfile
-  через переменную `RAILWAY_DOCKERFILE_PATH=Dockerfile.<svc>`) + `Postgres`
-  (`DATABASE_URL=${{Postgres.DATABASE_URL}}`). Деплой: `railway up --service <svc> --detach`
-  из корня репо (GitHub-автодеплоя нет). API: `https://api-production-e1f33.up.railway.app`, порт 8000.
-  Миграции гоняет api на старте; worker, стартовав раньше, падает один раз и перезапускается.
-- Старый стек на Contabo VPS (`/home/app/unibot`, api.workkeldi.com) остановлен
-  `docker compose stop`, не удалён. НЕ запускать бота в двух местах: один токен →
-  TelegramConflictError на getUpdates.
+- **Azure VM** (с 2026-11-02, подписка Azure for Students, $100/год): RG `unibot`, VM `unibot`
+  (Standard_B2ats_v2, 1 GB RAM + 2 GB swap, austriaeast — B1s в Германии нет по ёмкости;
+  регионы ограничены политикой подписки). Хост `unibot-kbtu.austriaeast.cloudapp.azure.com`.
+  Стек в `~/unibot` = клон репо + неотслеживаемые `.env`, `Caddyfile`, `compose.prod.yml`
+  (Caddy, HTTPS → api:8000); `.env` содержит `COMPOSE_FILE=docker-compose.yml:compose.prod.yml`.
+  Деплой: `git pull && sudo docker compose up -d --build` на VM (автодеплоя нет).
+  Миграции гоняет api на старте. SSH-доступ — в памяти агента, не в репо.
+- Railway (2026-09-16 … 2026-11) — подписка кончилась, не используется. Старый стек на Contabo
+  остановлен. НЕ запускать бота в двух местах: один токен → TelegramConflictError на getUpdates.
 - webapp → **Vercel**, проект `unibot-webapp`, root dir `apps/webapp`, **автодеплой из
-  push в main**. `VITE_API_URL` (production env на Vercel) = `/api`, `vercel.json` проксирует его на Railway;
-  `WEBAPP_URL` в переменных Railway = `https://unibot-webapp.vercel.app` (CORS + кнопка бота).
+  push в main**. `VITE_API_URL` (production env на Vercel) = `/api`, `vercel.json` проксирует его на VM;
+  `WEBAPP_URL` в `.env` на VM = `https://unibot-webapp.vercel.app` (CORS + кнопка бота).
 - Vercel CLI — только из **корня репо** (`.vercel/project.json` → `unibot-webapp`),
   иначе создастся левый проект.
 - BotFather → Mini App URL — стабильный алиас `https://unibot-webapp.vercel.app`,
