@@ -29,6 +29,7 @@ from typing import NamedTuple
 
 import certifi
 import httpx
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from packages.core.uninet import InvalidCredentials, UninetUnavailable
 
@@ -66,7 +67,9 @@ def texts(uidl: dict) -> list[str]:
 
 def attendance_text(page_texts: list[str]) -> str:
     """Дисциплины открытой отметки: без заголовка и подписей кнопок, ``<br>`` → перенос."""
-    return "\n\n".join(t.replace("<br>", "\n") for t in page_texts if t not in SKIP_TEXTS)
+    # Прочие теги Label выкидываем: текст идёт и в HTML-сообщения бота (экранированным).
+    return "\n\n".join(re.sub(r"<[^>]+>", "", t.replace("<br>", "\n"))
+                       for t in page_texts if t not in SKIP_TEXTS)
 
 
 def is_open(page_texts: list[str]) -> bool:
@@ -91,6 +94,23 @@ class Lesson(NamedTuple):
         parts = self.label.split("<br>")
         slot = parts[2].split(" ", 1)[0] if len(parts) > 2 else ""
         return f"{parts[0]} {slot}".strip()
+
+
+def attendance_keyboard(page: dict) -> InlineKeyboardMarkup:
+    """Кнопка «Отметиться» на каждую открытую пару (жмёт бот) + обновить и ссылка на сайт.
+
+    Общая для уведомления воркера и /wsp в боте.
+    """
+    rows = [[InlineKeyboardButton(text=_short(f"✅ Отметиться: {lesson.title}"),
+                                  callback_data=MARK_PREFIX + lesson.key)]
+            for lesson in lessons(page)]
+    rows.append([InlineKeyboardButton(text="🔄 Обновить", callback_data="at:open")])
+    rows.append([InlineKeyboardButton(text="🌐 Открыть wsp.kbtu.kz", url=BASE)])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _short(text: str, limit: int = 60) -> str:
+    return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
 class MarkResult(enum.Enum):

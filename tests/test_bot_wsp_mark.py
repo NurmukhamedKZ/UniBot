@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from apps.bot import main as bot
+from apps.bot import attendance as bot
 from packages.core import wsp
 from packages.core.uninet import UninetUnavailable
 from packages.db import users

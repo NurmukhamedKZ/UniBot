@@ -115,3 +115,42 @@ async def latest_watch_task(pool: asyncpg.Pool, user_id, week_id: int) -> asyncp
         user_id,
         str(week_id),
     )
+
+
+async def active_for_user(pool: asyncpg.Pool, user_id) -> list[asyncpg.Record]:
+    """Задачи юзера, которые ещё ждут или выполняются (для /status в боте)."""
+    return await pool.fetch(
+        """
+        SELECT * FROM watch_tasks
+        WHERE user_id = $1 AND status IN ('queued', 'running')
+        ORDER BY created_at
+        """,
+        user_id,
+    )
+
+
+async def cancel_queued(pool: asyncpg.Pool, user_id) -> int:
+    """Отменить ещё не запущенные задачи просмотра юзера; вернуть, сколько отменили.
+
+    Транскрибы не трогаем: они общие для всех и дешёвые, а отмена оставит без
+    результата тех, кто ждёт тот же файл. Запущенные тоже не трогаем: воркер уже
+    тикает прогресс в uninet, прервать его на середине — значит оставить неделю
+    недосмотренной без пользы.
+    """
+    result = await pool.execute(
+        """
+        UPDATE watch_tasks
+        SET status = 'cancelled', finished_at = now()
+        WHERE user_id = $1 AND status = 'queued' AND type = 'watch'
+        """,
+        user_id,
+    )
+    return int(result.split()[-1])
+
+
+async def running_for_user(pool: asyncpg.Pool, user_id) -> int:
+    """Сколько задач юзера уже выполняется (их отменить нельзя)."""
+    return await pool.fetchval(
+        "SELECT count(*) FROM watch_tasks WHERE user_id = $1 AND status = 'running'",
+        user_id,
+    )

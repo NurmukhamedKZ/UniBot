@@ -18,7 +18,7 @@ import asyncio
 import logging
 
 from aiogram import Bot
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import BufferedInputFile
 
 from packages.core import uninet, wsp
 from packages.core.transcribe import transcribe
@@ -37,10 +37,11 @@ ATTENDANCE_INTERVAL_SECONDS = 120  # окно отметки на паре ко�
 ATTENDANCE_CONCURRENCY = 5
 
 
-async def run_transcribe(pool, task) -> None:
+async def run_transcribe(pool, bot: Bot, task) -> None:
     kid = task["lesson_id"]
     try:
-        if await catalog.get_transcript(pool, kid) is None:
+        text = await catalog.get_transcript(pool, kid)
+        if text is None:
             text = await transcribe(kid)
             await catalog.save_transcript(pool, kid, text)
             logger.info("transcribed %s (%d chars)", kid, len(text))
@@ -48,30 +49,76 @@ async def run_transcribe(pool, task) -> None:
     except Exception as exc:
         logger.exception("transcribe failed for %s", kid)
         await tasks.finish(pool, task["id"], "failed", error=str(exc)[:500])
+        # Детали (Kinescope/OpenAI) — в лог, юзеру — общий текст.
+        await notify(pool, bot, task["user_id"],
+                     lambda: _with_title(pool, kid, "⚠️ Не удалось сделать транскриб{}. Попробуй позже."))
+        return
+    await notify(pool, bot, task["user_id"], lambda: _with_title(pool, kid, "📝 Транскриб готов{}"),
+                 BufferedInputFile(text.encode("utf-8"), filename=f"transcript-{kid[:12]}.txt"))
 
 
-async def run_watch(pool, task) -> None:
+async def run_watch(pool, bot: Bot, task) -> None:
+    week_id = int(task["lesson_id"])
     user = await users.credentials_by_id(pool, task["user_id"])
     try:
         if user is None:
             raise InvalidCredentials()
         s = uninet.session(user["kbtu_email"], decrypt_password(user["kbtu_password_enc"]))
-        await s.watch_week(int(task["lesson_id"]))
+        watched = await s.watch_week(week_id)
         await tasks.finish(pool, task["id"], "done")
-        logger.info("watched week %s for user %s", task["lesson_id"], task["user_id"])
+        logger.info("watched week %s for user %s (watched=%s)", week_id, task["user_id"], watched)
     except Exception as exc:
-        logger.exception("watch failed for week %s", task["lesson_id"])
+        logger.exception("watch failed for week %s", week_id)
         await tasks.finish(pool, task["id"], "failed", error=repr(exc)[:500])
+        hint = "Обнови вход: /login" if isinstance(exc, InvalidCredentials) else "Попробуй ещё раз: /watch"
+        await notify(pool, bot, task["user_id"],
+                     lambda: _week_text(pool, week_id, f"⚠️ Не удалось досмотреть неделю {{}}. {hint}"))
+        return
+    # Уже досмотренную неделю (``/watch all`` ставит все открытые) молча пропускаем.
+    if watched:
+        await notify(pool, bot, task["user_id"], lambda: _week_text(pool, week_id, "✅ Неделя {} просмотрена."))
 
 
-async def consume(pool, type: str, run, concurrency: int) -> None:
+async def notify(pool, bot: Bot, user_id, text, document: BufferedInputFile | None = None) -> None:
+    """Сообщить юзеру о готовой задаче (её могли поставить и из Mini App).
+
+    ``text`` — корутин-фабрика: подпись тоже читает БД, и её ошибка, как и ошибка
+    отправки, не должна ронять обработку задачи — статус к этому моменту уже записан.
+    """
+    if user_id is None:
+        return
+    try:
+        telegram_id = await users.telegram_id_by_id(pool, user_id)
+        if telegram_id is None:
+            return
+        caption = await text()
+        if document is not None:
+            await bot.send_document(telegram_id, document, caption=caption)
+        else:
+            await bot.send_message(telegram_id, caption)
+    except Exception:
+        logger.warning("notify user %s failed", user_id, exc_info=True)
+
+
+async def _week_text(pool, week_id: int, template: str) -> str:
+    cached = await catalog.cached_week(pool, week_id)
+    theme = cached[0].get("theme") if cached else None
+    return template.format(f"«{theme}»" if theme else f"#{week_id}")
+
+
+async def _with_title(pool, kid: str, template: str) -> str:
+    title = await catalog.video_title(pool, kid)
+    return template.format(f": «{title}»" if title else "")
+
+
+async def consume(pool, bot: Bot, type: str, run, concurrency: int) -> None:
     """Забирать задачи ``type`` из очереди, держа не больше ``concurrency`` одновременно."""
     semaphore = asyncio.Semaphore(concurrency)
     running: set[asyncio.Task] = set()
 
     async def guarded(task):
         try:
-            await run(pool, task)
+            await run(pool, bot, task)
         finally:
             semaphore.release()
 
@@ -92,14 +139,6 @@ async def consume(pool, type: str, run, concurrency: int) -> None:
         await asyncio.gather(*running, return_exceptions=True)
 
 
-def attendance_keyboard(page: dict) -> InlineKeyboardMarkup:
-    """По кнопке «Отметиться» на каждую открытую пару (жмёт бот, см. apps/bot) + ссылка на сайт."""
-    rows = [[InlineKeyboardButton(text=f"✅ Отметиться: {lesson.title}", callback_data=wsp.MARK_PREFIX + lesson.key)]
-            for lesson in wsp.lessons(page)]
-    rows.append([InlineKeyboardButton(text="Открыть wsp.kbtu.kz", url=wsp.BASE)])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
-
-
 async def check_attendance(pool, bot: Bot, user) -> None:
     try:
         page = await wsp.open_page(user["kbtu_email"], decrypt_password(user["kbtu_password_enc"]))
@@ -112,7 +151,7 @@ async def check_attendance(pool, bot: Bot, user) -> None:
         await bot.send_message(
             user["telegram_id"],
             f"🔔 Открылась отметка посещения на wsp.kbtu.kz\n\n{wsp.attendance_text(page_texts)}".strip(),
-            reply_markup=attendance_keyboard(page),
+            reply_markup=wsp.attendance_keyboard(page),
         )
         logger.info("attendance open for user %s", user["id"])
     if is_open != user["wsp_open"]:
@@ -146,8 +185,8 @@ async def main() -> None:
     try:
         await asyncio.gather(
             watch_attendance(pool, bot),
-            consume(pool, "transcribe", run_transcribe, MAX_CONCURRENT),
-            consume(pool, "watch", run_watch, WATCH_CONCURRENCY),
+            consume(pool, bot, "transcribe", run_transcribe, MAX_CONCURRENT),
+            consume(pool, bot, "watch", run_watch, WATCH_CONCURRENCY),
         )
     finally:
         await bot.session.close()

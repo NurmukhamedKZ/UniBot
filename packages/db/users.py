@@ -86,3 +86,8 @@ async def credentials_by_id(pool: asyncpg.Pool, user_id) -> asyncpg.Record | Non
         "WHERE id = $1 AND kbtu_email IS NOT NULL AND kbtu_password_enc IS NOT NULL",
         user_id,
     )
+
+
+async def telegram_id_by_id(pool: asyncpg.Pool, user_id) -> int | None:
+    """Telegram id по внутреннему id — worker шлёт уведомление о готовой задаче."""
+    return await pool.fetchval("SELECT telegram_id FROM users WHERE id = $1", user_id)

@@ -1,94 +1,64 @@
-"""Тонкий aiogram-бот: /start и любое сообщение -> кнопка Mini App; кнопки отметки на wsp."""
+"""aiogram-бот UniBot: команды без Mini App + кнопки отметки на wsp.
+
+Каталог uninet бот читает сам (``packages/core/uninet.py``, ``packages/db``):
+Mini App для команд не нужен, только Telegram. Кнопка Mini App остаётся в
+меню как альтернатива.
+"""
 
 from __future__ import annotations
 
 import asyncio
 import logging
 
-import asyncpg
-from aiogram import Bot, Dispatcher, F, Router
-from aiogram.types import (
-    CallbackQuery,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    MenuButtonWebApp,
-    Message,
-    WebAppInfo,
-)
+from aiogram import Bot, Dispatcher, F
+from aiogram.client.default import DefaultBotProperties
+from aiogram.enums import ChatType, ParseMode
+from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.types import BotCommand, BotCommandScopeAllPrivateChats, MenuButtonWebApp, WebAppInfo
 
-from packages.core import wsp
-from packages.core.uninet import InvalidCredentials, UninetUnavailable
-from packages.db import users
 from packages.db.pool import create_pool
 from packages.shared.config import TELEGRAM_TOKEN, WEBAPP_URL
-from packages.shared.crypto import decrypt_password
+
+from apps.bot import account, attendance, catalog, fallback
 
 logger = logging.getLogger(__name__)
-router = Router()
 
-MARK_ALERTS = {
-    wsp.MarkResult.UNCONFIRMED: "Нажал «Отметиться», но wsp не подтвердил отметку. Проверь на сайте.",
-    wsp.MarkResult.CLOSED: "Этой пары уже нет среди открытых: окно закрылось или ты уже отметился.",
-}
-
-
-@router.message()
-async def handle_any(message: Message) -> None:
-    await message.answer(
-        "UniBot — бесплатно для студентов KBTU: отмечает видеолекции uninet просмотренными "
-        "и делает транскрибы лекций.\n\nОткрой приложение 👇",
-        reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[[InlineKeyboardButton(text="Открыть UniBot", web_app=WebAppInfo(url=WEBAPP_URL))]]
-        ),
-    )
-
-
-@router.callback_query(F.data == wsp.MARK_DONE)
-async def handle_mark_done(query: CallbackQuery) -> None:
-    await query.answer("Уже отмечено ✅")
+COMMANDS = [
+    BotCommand(command="start", description="Меню"),
+    BotCommand(command="courses", description="Мои курсы"),
+    BotCommand(command="course", description="Недели курса"),
+    BotCommand(command="week", description="Видео недели"),
+    BotCommand(command="watch", description="Смотреть неделю / весь курс"),
+    BotCommand(command="transcribe", description="Транскриб видео"),
+    BotCommand(command="wsp", description="Отметка посещения"),
+    BotCommand(command="status", description="Активные задачи"),
+    BotCommand(command="cancel", description="Отменить очередь"),
+    BotCommand(command="login", description="Войти в KBTU"),
+    BotCommand(command="logout", description="Удалить креды"),
+    BotCommand(command="me", description="Аккаунт"),
+    BotCommand(command="help", description="Все команды"),
+]
 
 
-@router.callback_query(F.data.startswith(wsp.MARK_PREFIX))
-async def handle_mark(query: CallbackQuery, pool: asyncpg.Pool) -> None:
-    """Кнопка «Отметиться» из уведомления воркера: отмечаем на wsp от имени нажавшего."""
-    user = await users.credentials_by_telegram_id(pool, query.from_user.id)
-    if user is None:
-        await query.answer("Сначала войди в UniBot с логином KBTU.", show_alert=True)
-        return
-    try:
-        result = await wsp.mark(user["kbtu_email"], decrypt_password(user["kbtu_password_enc"]),
-                                query.data.removeprefix(wsp.MARK_PREFIX))
-    except InvalidCredentials:
-        await query.answer("wsp не принял пароль KBTU. Обнови его в UniBot.", show_alert=True)
-        return
-    except UninetUnavailable as exc:
-        logger.warning("wsp mark failed for user %s: %r", user["id"], exc)
-        await query.answer("wsp не отвечает. Попробуй ещё раз или отметься на сайте.", show_alert=True)
-        return
-    logger.info("wsp mark for user %s: %s", user["id"], result.value)
-    if result is not wsp.MarkResult.MARKED:
-        await query.answer(MARK_ALERTS[result], show_alert=True)
-        return
-    await query.answer("Отмечено ✅")
-    await query.message.edit_reply_markup(reply_markup=_mark_as_done(query.message.reply_markup, query.data))
-
-
-def _mark_as_done(markup: InlineKeyboardMarkup, data: str) -> InlineKeyboardMarkup:
-    """Заменить нажатую кнопку на «✅ Отмечено: …», остальные оставить как есть."""
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=b.text.replace("✅ Отметиться:", "✅ Отмечено:"), callback_data=wsp.MARK_DONE)
-         if b.callback_data == data else b for b in row]
-        for row in markup.inline_keyboard
-    ])
+def build_dispatcher(pool) -> Dispatcher:
+    dp = Dispatcher(pool=pool, storage=MemoryStorage())
+    # Только личка: в группе /login с паролем увидят все, а удалить его бот может не суметь.
+    dp.message.filter(F.chat.type == ChatType.PRIVATE)
+    # account — первым: его перехватчик сбрасывает вход, если посреди него пришла команда.
+    dp.include_routers(account.router, catalog.router, attendance.router, fallback.router)
+    return dp
 
 
 async def main() -> None:
     logging.basicConfig(level=logging.INFO)
-    bot = Bot(TELEGRAM_TOKEN)
+    bot = Bot(TELEGRAM_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     pool = await create_pool()
-    await bot.set_chat_menu_button(menu_button=MenuButtonWebApp(text="UniBot", web_app=WebAppInfo(url=WEBAPP_URL)))
-    dp = Dispatcher(pool=pool)
-    dp.include_router(router)
+    await bot.set_my_commands(COMMANDS, scope=BotCommandScopeAllPrivateChats())
+    if WEBAPP_URL:
+        await bot.set_chat_menu_button(
+            menu_button=MenuButtonWebApp(text="UniBot", web_app=WebAppInfo(url=WEBAPP_URL))
+        )
+    dp = build_dispatcher(pool)
     try:
         await dp.start_polling(bot)
     finally:

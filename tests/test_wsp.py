@@ -93,7 +93,8 @@ async def test_notifies_once_per_opening(pool, make_user, monkeypatch):
     chat_id, text, markup = bot.sent[0]
     assert chat_id == 42 and "Деректер базасы\nҚұралбаев А.Т.\nЛ3" in text
     assert "Отметка посещения" not in text and "Отметиться" not in text and "<br>" not in text
-    [mark], [site] = markup.inline_keyboard
+    [mark], [refresh], [site] = markup.inline_keyboard
+    assert refresh.callback_data == "at:open"
     assert mark.text == "✅ Отметиться: Деректер базасы Л3"
     assert mark.callback_data == wsp.MARK_PREFIX + wsp.lessons(page(L3))[0].key
     assert site.url == wsp.BASE
