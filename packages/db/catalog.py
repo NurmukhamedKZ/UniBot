@@ -11,6 +11,15 @@ async def get_transcript(pool: asyncpg.Pool, lesson_id: str) -> str | None:
     return await pool.fetchval("SELECT text FROM transcripts WHERE lesson_id = $1", lesson_id)
 
 
+async def video_title(pool: asyncpg.Pool, kid: str) -> str | None:
+    """Название видео по id Kinescope из кэша недель (для /status и уведомлений)."""
+    return await pool.fetchval(
+        "SELECT v->>'title' FROM uninet_weeks, jsonb_array_elements(videos) v "
+        "WHERE v->>'kinescope_id' = $1 LIMIT 1",
+        kid,
+    )
+
+
 async def transcribed_ids(pool: asyncpg.Pool, lesson_ids: list[str]) -> set[str]:
     rows = await pool.fetch("SELECT lesson_id FROM transcripts WHERE lesson_id = ANY($1::text[])", lesson_ids)
     return {r["lesson_id"] for r in rows}

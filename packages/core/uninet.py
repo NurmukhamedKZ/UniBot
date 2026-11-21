@@ -164,12 +164,19 @@ class Uninet:
                 continue
             left -= delta
 
-    async def watch_week(self, week_id: int) -> None:
-        """Досмотреть все незасчитанные видео недели, по одному (параллельно сервер не считает)."""
+    async def watch_week(self, week_id: int) -> bool:
+        """Досмотреть незасчитанные видео недели, по одному (параллельно сервер не считает).
+
+        Возвращает ``True``, если что-то реально досматривалось. Полностью
+        просмотренную неделю не трогаем: воркер по этому признаку не шлёт
+        лишнее «✅ просмотрена» на каждую неделю из ``/watch all``.
+        """
+        watched = False
         for _ in range(WATCH_ROUNDS):
             pending = [v for v in week_videos(await self.week(week_id)) if not v["completed"]]
             if not pending:
-                return
+                return watched
+            watched = True
             for v in pending:
                 await self.watch_video(v)
         raise UninetUnavailable(f"week {week_id}: videos still not completed after {WATCH_ROUNDS} rounds")

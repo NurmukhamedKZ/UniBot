@@ -66,3 +66,14 @@ Playwright/LLM-тесты) — в legacy/, не собирается и не т�
 - Локально Mini App проверяется подставным `#tgWebAppData=...`: bridge требует
   в initData `signature` и `user.first_name`, и нужна полная загрузка страницы
   (смена только хэша не пересоздаёт performance entry).
+- Команды бота (`apps/bot/{account,catalog,attendance}.py`) работают без Mini App и
+  без API: у бота свой `pool` и `packages/core/uninet`, `wsp`. Числа в `/course`,
+  `/week`, `/transcribe` — позиции последнего списка (контекст в памяти процесса,
+  `apps/bot/common.py`), кнопки несут реальные id в `callback_data`. `/login`
+  принимает пароль в чате и сразу удаляет сообщение. Воркер после `watch`/
+  `transcribe` шлёт юзеру результат (`apps/worker/main.py`), «просмотрена» — только
+  если неделю реально досматривал (`watch_week` → bool).
+- Бот отвечает только в личке (`dp.message.filter` в `build_dispatcher`). Команда посреди
+  входа сбрасывает FSM и уходит своему хендлеру (`SkipHandler`); после него фильтры видят
+  ещё старое состояние, поэтому хендлеры email/пароля сами отсекают `/…`.
+  Клавиатура «Отметиться» одна на бота и воркер — `wsp.attendance_keyboard`.
