@@ -170,7 +170,7 @@ def week_text(course: dict, week: dict, videos: list[dict]) -> str:
     for i, video in enumerate(videos, 1):
         icon = "✅" if video.get("completed") else "▶️"
         lines.append(f"[{i}] {icon} {esc(video.get('title'))} · {fmt_duration(video.get('durationSec'))}")
-    lines += ["", "Транскриб: /transcribe 1"]
+    lines += ["", "Транскриб: /transcribe 1 · вся неделя: /transcribe all"]
     return "\n".join(lines)
 
 
@@ -184,6 +184,7 @@ def week_keyboard(course_id: int, week_id: int, videos: list[dict]) -> InlineKey
                 text=_short(f"{i}. {video.get('title')}"),
                 callback_data=data,
             )])
+    rows.append([InlineKeyboardButton(text="📝 Транскрибы всей недели", callback_data=f"ta:{week_id}")])
     rows.append([InlineKeyboardButton(text="▶️ Смотреть неделю", callback_data=f"wa:{week_id}")])
     rows.append([
         InlineKeyboardButton(text="⬅️ К курсу", callback_data=f"c:{course_id}"),
@@ -247,6 +248,41 @@ async def send_transcript(message: Message, pool: asyncpg.Pool, row: asyncpg.Rec
         return
     await tasks.enqueue(pool, user_id=row["id"], type="transcribe", lesson_id=kid)
     await message.answer("📝 Готовлю транскриб — пришлю файлом, когда будет готов.")
+
+
+async def send_week_transcripts(message: Message, pool: asyncpg.Pool, row: asyncpg.Record,
+                                videos: list[dict]) -> None:
+    """Транскрибы всей недели: готовые — файлами сразу, остальные — в очередь (файл придёт от воркера)."""
+    seen: set[str] = set()
+    sent = queued = waiting = 0
+    for video in videos:
+        kid = _kid(video)
+        if kid is None or kid in seen:
+            continue
+        seen.add(kid)
+        text = await catalog.get_transcript(pool, kid)
+        if text is not None:
+            await message.answer_document(transcript_file(kid, text), caption=f"📝 {esc(video.get('title'))}")
+            sent += 1
+            continue
+        if row["kbtu_email"] is None:
+            continue
+        task = await tasks.latest_transcribe_task(pool, kid)
+        if task and task["status"] in ("queued", "running"):
+            waiting += 1  # уже готовится (возможно, по чужому запросу)
+        else:
+            await tasks.enqueue(pool, user_id=row["id"], type="transcribe", lesson_id=kid)
+            queued += 1
+    if not seen:
+        await message.answer("В этой неделе нет видео с транскрибом.")
+        return
+    missing = len(seen) - sent - queued - waiting
+    parts = [f"Готовых: {sent}"]
+    if queued or waiting:
+        parts.append(f"в очереди: {queued + waiting} — пришлю файлами по мере готовности")
+    if missing:
+        parts.append(f"без транскриба: {missing} — войди /login, чтобы сделать новые")
+    await message.answer("📝 " + ", ".join(parts) + ".")
 
 
 # --- Команды -----------------------------------------------------------------------
@@ -376,9 +412,15 @@ async def cmd_watch(message: Message, command: CommandObject, pool: asyncpg.Pool
 @router.message(Command("transcribe"))
 async def cmd_transcribe(message: Message, command: CommandObject, pool: asyncpg.Pool) -> None:
     ctx = context(message.from_user.id)
+    if (command.args or "").strip().lower() == "all":
+        if not ctx.videos:
+            await message.answer("Сначала /week N, потом /transcribe all.")
+            return
+        await send_week_transcripts(message, pool, await user_row(pool, message.from_user), ctx.videos)
+        return
     idx = _index(command.args)
     if idx is None or idx >= len(ctx.videos):
-        await message.answer("Сначала /week N, потом /transcribe N.")
+        await message.answer("Сначала /week N, потом /transcribe N (или /transcribe all — вся неделя).")
         return
     kid = _kid(ctx.videos[idx])
     if kid is None:
@@ -467,6 +509,23 @@ async def cb_video(query: CallbackQuery, pool: asyncpg.Pool) -> None:
         await query.answer("Видео не нашлось — открой неделю заново.", show_alert=True)
         return
     await edit(query, video_text(video), video_keyboard(course_id, week_id, kid))
+
+
+@router.callback_query(F.data.startswith("ta:"))
+async def cb_transcripts_week(query: CallbackQuery, pool: asyncpg.Pool) -> None:
+    week_id = int(query.data[3:])
+    await query.answer()
+    await typing(query)
+    s = await _session(pool, query.from_user.id)
+    if s is None:
+        await query.message.answer(LOGIN_HINT)
+        return
+    try:
+        _, videos = await _load_week(pool, s, context(query.from_user.id), week_id)
+    except (InvalidCredentials, UninetUnavailable) as exc:
+        await query.message.answer(uninet_error(exc))
+        return
+    await send_week_transcripts(query.message, pool, await user_row(pool, query.from_user), videos)
 
 
 @router.callback_query(F.data.startswith("t:"))

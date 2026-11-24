@@ -2,7 +2,15 @@
 
 from __future__ import annotations
 
-from apps.bot.catalog import _index, courses_text, send_transcript, video_text, week_text, weeks_keyboard
+from apps.bot.catalog import (
+    _index,
+    courses_text,
+    send_transcript,
+    send_week_transcripts,
+    video_text,
+    week_text,
+    weeks_keyboard,
+)
 from apps.bot.common import fmt_duration
 from packages.db import catalog as db_catalog
 from packages.db import tasks, users
@@ -171,3 +179,42 @@ async def test_cancel_queued_keeps_shared_transcribes_and_blocks_claim(pool, mak
     assert await tasks.cancel_queued(pool, user_id) == 1
     assert await tasks.claim_next(pool, "watch") is None
     assert await pool.fetchval("SELECT status FROM watch_tasks WHERE id=$1", transcribe) == "queued"
+
+
+async def test_week_transcripts_send_cached_and_queue_rest(pool, make_user) -> None:
+    row = await _user_row(pool, make_user, with_creds=True)
+    await db_catalog.save_transcript(pool, "kidA", "text a")
+    await tasks.enqueue(pool, row["id"], "transcribe", "kidC")  # уже готовится
+    videos = [
+        {"title": "A <1>", "url": "https://kinescope.io/kidA"},
+        {"title": "B", "url": "https://kinescope.io/kidB"},
+        {"title": "C", "url": "https://kinescope.io/kidC"},
+        {"title": "A again", "url": "https://kinescope.io/kidA"},  # дубль не шлём дважды
+        {"title": "no url"},
+    ]
+    message = FakeMessage()
+
+    await send_week_transcripts(message, pool, row, videos)
+
+    assert [(d.filename, c) for d, c in message.documents] == [("transcript-kidA.txt", "📝 A &lt;1&gt;")]
+    assert "Готовых: 1" in message.answers[0] and "в очереди: 2" in message.answers[0]
+    queued = await pool.fetch("SELECT lesson_id FROM watch_tasks WHERE type='transcribe' ORDER BY lesson_id")
+    assert [r["lesson_id"] for r in queued] == ["kidB", "kidC"]
+
+    again = FakeMessage()
+    await send_week_transcripts(again, pool, row, videos)  # повтор не плодит задачи
+    assert await pool.fetchval("SELECT count(*) FROM watch_tasks WHERE type='transcribe'") == 2
+
+
+async def test_week_transcripts_without_credentials_only_sends_cached(pool, make_user) -> None:
+    await db_catalog.save_transcript(pool, "kidA", "text a")
+    message = FakeMessage()
+
+    await send_week_transcripts(
+        message, pool, await _user_row(pool, make_user),
+        [{"title": "A", "url": "https://kinescope.io/kidA"}, {"title": "B", "url": "https://kinescope.io/kidB"}],
+    )
+
+    assert len(message.documents) == 1
+    assert "без транскриба: 1" in message.answers[0] and "/login" in message.answers[0]
+    assert await pool.fetchval("SELECT count(*) FROM watch_tasks") == 0
