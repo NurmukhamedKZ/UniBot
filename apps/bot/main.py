@@ -2,7 +2,7 @@
 
 Каталог uninet бот читает сам (``packages/core/uninet.py``, ``packages/db``):
 Mini App для команд не нужен, только Telegram. Кнопка Mini App остаётся в
-меню как альтернатива.
+/start и /help как альтернатива.
 """
 
 from __future__ import annotations
@@ -14,10 +14,10 @@ from aiogram import Bot, Dispatcher, F
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ChatType, ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import BotCommand, BotCommandScopeAllPrivateChats, MenuButtonWebApp, WebAppInfo
+from aiogram.types import BotCommand, BotCommandScopeAllPrivateChats, MenuButtonCommands
 
 from packages.db.pool import create_pool
-from packages.shared.config import TELEGRAM_TOKEN, WEBAPP_URL
+from packages.shared.config import TELEGRAM_TOKEN
 
 from apps.bot import account, attendance, catalog, fallback
 
@@ -54,10 +54,8 @@ async def main() -> None:
     bot = Bot(TELEGRAM_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     pool = await create_pool()
     await bot.set_my_commands(COMMANDS, scope=BotCommandScopeAllPrivateChats())
-    if WEBAPP_URL:
-        await bot.set_chat_menu_button(
-            menu_button=MenuButtonWebApp(text="UniBot", web_app=WebAppInfo(url=WEBAPP_URL))
-        )
+    # Кнопка у поля ввода — список команд; Mini App открывается кнопкой в /start (account.main_menu).
+    await bot.set_chat_menu_button(menu_button=MenuButtonCommands())
     dp = build_dispatcher(pool)
     try:
         await dp.start_polling(bot)
